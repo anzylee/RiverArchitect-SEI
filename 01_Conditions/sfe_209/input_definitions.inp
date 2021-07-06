@@ -1,0 +1,18 @@
+# RASTER META DATA - ONLY MODIFY VALUES BETWEEN '=' AND '#'
+#
+#---------------------------------------------------------------------------------------
+Return periods = 5.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0 #[Comma separated LIST] defines lifespans
+#
+# RASTER NAMES
+#---------------------------------------------------------------------------------------
+composite Habitat Suitability Index (CHSI) = max_chn #[STRING] for habitat matching
+DEM of differences =  #[Comma separated LIST]
+Detrended DEM = dem_detrend #[STRING]
+Flow velocity (u) = u000000_011, u000000_040, u000000_062, u000000_091, u000000_156, u000000_284, u000000_440, u000000_658, u000001_376, u000002_475, u000003_642, u000008_047, u000013_955 #[Comma separated LIST]
+Flow depth (h) = h000000_011, h000000_040, h000000_062, h000000_091, h000000_156, h000000_284, h000000_440, h000000_658, h000001_376, h000002_475, h000003_642, h000008_047, h000013_955 #[Comma separated LIST]
+Grain sizes (D mean) = dmean #[STRING]
+Morphological units (mu) = mu #[STRING]
+Depth to groundwater table (d2w) = d2w #[STRING]
+DEM = dem #[STRING] 
+Side channel = sidech #[STRING] side channel delineation raster
+Wildcard raster = wild #[STRING] any raster for spatial analysis confinement
