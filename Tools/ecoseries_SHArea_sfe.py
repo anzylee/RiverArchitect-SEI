@@ -179,6 +179,7 @@ for fish_period in fish_periods:
     #plt.savefig(figure_path+case_name+'_'+ fish_name + period +'_Q_time.svg')
     plt.savefig(figure_path + case_name + '_Q_time.svg')
     plt.savefig(figure_path + case_name + '_Q_time.pdf')
+    plt.savefig(figure_path + case_name + '_Q_time.png')
 
     plt.figure(3)
     plt.plot(Norm_Eco_series, label= fish_period_full)
@@ -194,6 +195,7 @@ for fish_period in fish_periods:
     #plt.savefig(figure_path+case_name+'_'+ fish_name + period +'_Area_time.svg')
     plt.savefig(figure_path + case_name + '_SHArea_time.svg')
     plt.savefig(figure_path + case_name + '_SHArea_time.pdf')
+    plt.savefig(figure_path + case_name + '_SHArea_time.png')
 
     #########################
     # Sequence-average plot
@@ -254,5 +256,6 @@ for fish_period in fish_periods:
     plt.show()
     plt.savefig(figure_path + case_name + '_SHArea_seq_avg.svg')
     plt.savefig(figure_path + case_name + '_SHArea_seq_avg.pdf')
+    plt.savefig(figure_path + case_name + '_SHArea_seq_avg.png')
 
     ind += 1

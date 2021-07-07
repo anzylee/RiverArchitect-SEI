@@ -302,6 +302,7 @@ for fish_period in fish_periods:
         plt.show()
         plt.savefig(figure_path + case_name + '_ecorisk_flow_series.svg')
         plt.savefig(figure_path + case_name + '_ecorisk_flow_series.pdf')
+        plt.savefig(figure_path + case_name + '_ecorisk_flow_series.png')
 
         """
         plt.figure(3)
