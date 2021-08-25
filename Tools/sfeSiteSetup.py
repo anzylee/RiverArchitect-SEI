@@ -18,8 +18,9 @@ from scipy.interpolate import interp1d
 import seaborn as sns
 
 '''
+For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before.
 
-
+For RCT Discharge it's going to be a lot easier to just ask for a dictionary with the discharge to compare to and the dates as before.
 '''
 
 class model():
@@ -342,7 +343,7 @@ class model():
     def calculateSuccess(self, scenarios, eco_threshold=0.1, life_stage_period=False, verbose=False, df='2-d hydrodynamic'):
         '''
 
-        Parameters
+         Parameters
         ----------
         scenarios : List of integers
             List of scenarios to rank.
@@ -360,7 +361,7 @@ class model():
 
         '''
         # Check to see if a life stage period dictionary is provided and if not, use the default
-        if ~isinstance(life_stage_period, dict):
+        if not(isinstance(life_stage_period, dict)):
             life_stage_period = {}
             life_stage_period['Chinook Salmon'] = {}
             life_stage_period['Chinook Salmon']['fry'] = ((1,1),(12,31),True)
@@ -378,7 +379,7 @@ class model():
             
             if verbose: print(s)
             
-            dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries = self.processData(s)
+            dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long = self.processData(s)
             
             years = np.unique(dfTimeSeries.index.year.values)
             
@@ -408,7 +409,7 @@ class model():
                     # Count all entries above the threshold in each year
                     numSuccess = pd.DataFrame(dfEcoseries_temp.resample('A').sum()).rename(columns={f + ' - ' + d: "Successes"})
                     numSuccess['Case'] = self.case
-                    numSuccess['Scenario'] = s
+                    numSuccess['Scenario'] = str(s)
                     numSuccess['Fish name'] = f
                     numSuccess['Life stage'] = d
                     numSuccess['Fish name - Life stage'] = f + ' - ' + d
@@ -505,3 +506,74 @@ class model():
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.svg')
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.pdf')
         plt.close()
+
+    def plot_ecorisk(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True):
+        '''
+        Parameters
+        ----------
+        ecoseries_success : TYPE
+            DESCRIPTION.
+        annual_d_threshold : TYPE, optional
+            DESCRIPTION. The default is 40.
+        plt_d_per_yr : TYPE, optional
+            DESCRIPTION. The default is True.
+        plt_success_d : TYPE, optional
+            DESCRIPTION. The default is True.
+        plt_success_yr : TYPE, optional
+            DESCRIPTION. The default is True.
+
+        Returns
+        -------
+        None.
+
+        '''
+        
+        # Check to see if ecoseries_success is list of scenarios, if it is run calculateSuccess
+        if isinstance(ecoseries_success, list):
+            ecoseries_success = self.calculateSuccess(ecoseries_success, verbose=True)
+        
+        dfColumns = ['Scenario','Case','Fish name','Life stage','Fish name - Life stage']
+        
+        cumulative_days = ecoseries_success.groupby(dfColumns).sum().reset_index()
+        # Check to see if annual_d_threshold is a dictionary, if not, apply same scalar year threshold to all
+        if not(isinstance(annual_d_threshold, dict)):
+            cumulative_years = ecoseries_success[ecoseries_success['Successes'] >= annual_d_threshold]
+            
+        # If annual_d_threshold is a dictionary, apply the threshold by fish name and life stage
+        else:
+            cumulative_years = pd.DataFrame()
+            # Loop through fish names
+            for f in annual_d_threshold:
+                # Loop through life stages
+                for d in annual_d_threshold[f]:
+                    cumulative_years_temp = ecoseries_success[ecoseries_success['Fish name - Life stage'] == f + ' - ' + d]
+                    cumulative_years_temp = cumulative_years_temp[cumulative_years_temp['Successes'] >= annual_d_threshold[f][d]]
+                    cumulative_years = pd.concat([cumulative_years, cumulative_years_temp])
+                    
+        cumulative_years = cumulative_years.groupby(dfColumns).count().reset_index()
+        cumulative_years_temp = cumulative_days.copy()
+        cumulative_years_temp['Successes'] = 0
+        cumulative_years = pd.concat([cumulative_years, cumulative_years_temp]).drop_duplicates(dfColumns, keep='first')
+        
+        if plt_d_per_yr:
+            g = sns.relplot(data=ecoseries_success, x='Scenario', y='Successes', hue=ecoseries_success.index.year, col='Life stage', row='Fish name', kind="line", aspect=2, palette=sns.color_palette("viridis_r", as_cmap=True), facet_kws={'sharey':'none'})
+            
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_days-per-year.svg')
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_days-per-year.pdf')
+            plt.close()
+        
+        if plt_success_d:
+            g = sns.relplot(data=cumulative_days, x='Scenario', y='Successes', hue='Fish name', col='Life stage', row='Fish name', kind="line", aspect=2, legend=False, facet_kws={'sharey':'none'})
+            
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_cumulative-days.svg')
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_cumulative-days.pdf')
+            plt.close()
+            
+        if plt_success_yr:
+            g = sns.relplot(data=cumulative_years, x='Scenario', y='Successes', hue='Fish name', col='Life stage', row='Fish name', kind="line", aspect=2, legend=False, facet_kws={'sharey':'none'})
+            
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_success-years.svg')
+            g.savefig(self.fig_path + self.case_name + '_ecorisk_success-years.pdf')
+            plt.close()
+        
+        return ecoseries_success, cumulative_days, cumulative_years
