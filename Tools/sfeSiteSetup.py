@@ -18,43 +18,36 @@ from scipy.interpolate import interp1d
 import seaborn as sns
 
 '''
-Notes:
 
-polyArea - include location as an input
-Habitat area plot over time & Sequence Average - separate out into life stages as rows
 
 '''
 
 class model():
     # Initializer / Instance attributes
-    def __init__(self, case, reference_site=2090, case_site_database='input/case_site_database.csv', site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', raster_location="../01_Conditions/", sharea_path="../SHArC/SHArea/", fish_names=['Chinook Salmon', 'Rainbow / Steelhead Trout'], fish_stages=['fry','juvenile','spawn'], min_waterdepth=0):
+    def __init__(self, case, reference_site=2090, case_site_database='input/case_site_database.csv', site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', sharea_path="../SHArC/SHArea/", fish_names=['Chinook Salmon', 'Rainbow / Steelhead Trout'], fish_stages=['fry','juvenile','spawn']):
         '''
         Parameters
         ----------
-        case : String
+        case : Integer
             Catchment case number to label and find data.
-        reference_site : TYPE, optional
+        reference_site : Integer, optional
             DESCRIPTION. The default is 2090.
-        case_site_database : TYPE, optional
+        case_site_database : String, optional
             DESCRIPTION. The default is 'input/case_site_database.csv'.
-        site_area_database : TYPE, optional
+        site_area_database : String, optional
             DESCRIPTION. The default is 'input/All SFE LOI Characteristics with MAF.xlsx'.
-        scenario_path : TYPE, optional
+        scenario_path : String, optional
             DESCRIPTION. The default is 'input/scenarios/'.
-        raster_location : String, optional
-            File path to the case area depth raster to evaluate bankfull area. The default is "../01_Conditions/".
-        sharea_path : TYPE, optional
+        sharea_path : String, optional
             DESCRIPTION. The default is "../SHArC/SHArea/".
-        fish_names : TYPE, optional
-            DESCRIPTION. The default is ['Chinook Salmon', 'Rainbow / Steelhead Trout'].
-        fish_stages : TYPE, optional
-            DESCRIPTION. The default is ['fry','juvenile','spawn'].
-        min_waterdepth : TYPE, optional
-            DESCRIPTION. The default is 0.
+        fish_names : List of strings, optional
+            Names for each of the species to be analyzed. The default is ['Chinook Salmon', 'Rainbow / Steelhead Trout'].
+        fish_stages : List of strings, optional
+            Life stages for fish to be analyzed. The default is ['fry','juvenile','spawn'].
 
         Returns
         -------
-        None.
+        Model object.
         '''
         # Initialize case and reference IDs and areas
         #cs_db = pd.read_csv(case_site_database) ##FINISH##
@@ -66,7 +59,6 @@ class model():
         self.ref_area = 26.04775 ##FINISH##
         
         # Initialize pathnames and headers
-        self.r_location = raster_location
         self.s_path = scenario_path
         self.t_headers = list(pd.read_csv('input/SFER_Instance_Results_Template_long.csv').columns)
         self.sha_path = sharea_path
@@ -75,10 +67,8 @@ class model():
         # Initialize species names and life stages
         self.f_name = fish_names
         self.f_stage = fish_stages
-        
-        self.min_d = min_waterdepth
     
-    def polyArea(self, raster_name, limit=0, minlim=True, save_shp=False):
+    def polyArea(self, raster_name, raster_location, limit=0, minlim=True, save_shp=False):
         '''
         This function calculates the area in the provided raster that meets the conditional expression indicated. The conditional expression can be either a minimum value or a maximum value.
         
@@ -86,6 +76,8 @@ class model():
         ----------
         raster_name : String
             Original raster to evaluate area.
+        raster_location : String, optional
+            File path to the where the raster that is being evaluated is stored.
         limit : float
             The value above or below which the area will be summed.
         minlim : boolean, optional
@@ -98,7 +90,7 @@ class model():
         calculatedArea : float
             The area of the original raster that meets the limit requirement.
         '''
-        filepath = os.path.abspath(self.r_location + self.case_name)
+        filepath = os.path.abspath(raster_location)
         
         # Retrieve cell size and coordinate transformations for calculating area and generating shp
         tfw_metadata = np.loadtxt(os.path.join(filepath, raster_name + ".tfw"))
@@ -186,7 +178,7 @@ class model():
         # Calculate bankfull area if not provided
         if calc_BfQarea:
             BfQ_depth = 'h' + f'{dfSHArea_temp.Discharge[0]:010.3f}'.replace('.', '_')
-            BfQ_area = self.polyArea(raster_name=BfQ_depth, limit=self.min_d)
+            BfQ_area = self.polyArea(raster_name=BfQ_depth, raster_location="../01_Conditions/"+ self.case_name, limit=0)
         
         # Non-dimensionalization
         dfSHArea_temp['Ratio of discharge to bankfull discharge'] = dfSHArea_temp['Discharge'].values / dfSHArea_temp['Discharge'][0]
@@ -296,6 +288,7 @@ class model():
         ind = 0
         dfSHArea = pd.DataFrame()
         dfEcoseries = pd.DataFrame()
+        dfEcoseries_long = pd.DataFrame()
         
         for fname in self.f_name:
             for fstage in self.f_stage:
@@ -333,29 +326,37 @@ class model():
                 dfSHArea_temp['Life stage'] = fstage
                 dfSHArea_temp['Fish name - Life stage']= fname + ' - ' + fstage
                 
+                dfEcoseries_temp = dfEcoseries_temp.rename(columns={fname + ' - ' + fstage: 'Habitat area / Bankfull area'})
+                dfEcoseries_temp['Case'] = self.case
+                dfEcoseries_temp['Scenario'] = scenario
+                dfEcoseries_temp['Fish name'] = fname
+                dfEcoseries_temp['Life stage'] = fstage
+                dfEcoseries_temp['Fish name - Life stage']= fname + ' - ' + fstage
+                
                 dfSHArea = pd.concat([dfSHArea,dfSHArea_temp])
+                dfEcoseries_long = pd.concat([dfEcoseries_long,dfEcoseries_temp])
                 ind += 1
         
-        return dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries
+        return dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long
     
     def calculateSuccess(self, scenarios, eco_threshold=0.1, life_stage_period=False, verbose=False, df='2-d hydrodynamic'):
         '''
 
         Parameters
         ----------
-        scenarios : TYPE
-            DESCRIPTION.
-        eco_threshold : TYPE, optional
-            DESCRIPTION. The default is 0.1.
-        life_stage_period : TYPE, optional
-            DESCRIPTION. The default is False.
-        verbose : TYPE, optional
-            DESCRIPTION. The default is False.
+        scenarios : List of integers
+            List of scenarios to rank.
+        eco_threshold : Float, optional
+            A number between 0 and 1 that indicates the threshold to which the ecoseries habitat area to bankfull area ratio should be compared. The default is 0.1.
+        life_stage_period : Dictionary of dictionaries, optional
+            A dictionary that contains a dictionary of tuples for each species. Each species dictionary contains a tuple of length 3 for each life stage. The tuple indicates: ((start month, start day), (end month, end day), Including). Including is a boolean variable that indicates whether the date range to be evaluated is inside the date range indicated or outside the date range. The default for life_stage_period is False, which indicates the default dictionary should be used.
+        verbose : Boolean, optional
+            Indicates if progress of the analysis should be printed in the dialog. The default is False.
 
         Returns
         -------
-        ecoseries_success : TYPE
-            DESCRIPTION.
+        ecoseries_success : Pandas DataFrame
+            Contains information on the number of successful days during each annual date range period when compared to the eco_threshold for all scenario, life stage, and fish name combinations.
 
         '''
         # Check to see if a life stage period dictionary is provided and if not, use the default
@@ -433,13 +434,14 @@ class model():
     
     def scenarioHabitatSeriesLinePlot(self, dfEcoseries):
         # Line plot of normalized habitat area calculated based on discharge regression output over time
-        g = dfEcoseries.plot()
-        g.set_ylabel('Habitat area / Bankfull area')
-        g.figure.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.svg')
-        g.figure.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.pdf')
+        g = sns.relplot(data=dfEcoseries, x=dfEcoseries.index, y='Habitat area / Bankfull area', hue='Fish name', row='Life stage', kind="line", legend=False, aspect=2)
+        g.axes[0][0].legend(self.f_name)
+        plt.tight_layout()
+        g.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.svg')
+        g.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.pdf')
         plt.close()
 
-    def plot_seqAvg(self, df, label, CI=0.8, window=365):
+    def plot_seqAvg(self, df, label, ax, CI=0.8, window=365):
         '''
         This function plots a time series using the Sequence Average method. This method plots the confidence interval for the average value over windows of size b*n, where b is the base window size and n is 1 to the length of the time series divided by b minus 1. The average value is calculated as the rolling average at each window size.
         
@@ -449,6 +451,8 @@ class model():
             A single column DataFrame that contains data that will be plotted using the Sequence Averaged method.
         label : String
             Name of the time series, generally in the format of 'Fish name - life stage'.
+        ax : Figure axes
+            Axes object on which to plot the sequence-averaged graph.
         CI : Float, optional
             The size of the confidence interval that will be plotted. The default is 0.8.
         window : Integer, optional
@@ -466,9 +470,9 @@ class model():
             seqAvgCI[y-1,0] = df.rolling(window*y).mean().quantile(half_CI)
             seqAvgCI[y-1,1] = df.rolling(window*y).mean().quantile(1 - half_CI)
         
-        plt.plot(np.arange(1,years), seqAvgCI[:,0])
-        plt.plot(np.arange(1,years), seqAvgCI[:,1], plt.gca().lines[-1].get_color())
-        plt.fill_between(x=np.arange(1,years), y1=seqAvgCI[:,0], y2=seqAvgCI[:,1], alpha=0.4, label=label)
+        ax.plot(np.arange(1,years), seqAvgCI[:,0])
+        ax.plot(np.arange(1,years), seqAvgCI[:,1], list(ax.get_lines())[-1].get_color())
+        ax.fill_between(x=np.arange(1,years), y1=seqAvgCI[:,0], y2=seqAvgCI[:,1], alpha=0.4, label=label)
     
     def plot_multiSeqAvg(self, dfEcoseries):
         '''
@@ -484,13 +488,20 @@ class model():
         None.
 
         '''
-        # Sequence average
-        g = plt.figure()
-        for c, cols in dfEcoseries.items():
-            self.plot_seqAvg(df=cols, label=c, CI=0.8, window=365)
-        plt.ylabel('Sequence-averaged habitat area / Bankfull area')
-        plt.xlabel('Date')
+        g, axs = plt.subplots(len(self.f_stage), sharex=True, sharey=True)
+        for s, stage in enumerate(self.f_stage):
+            for f in self.f_name:
+                # Sequence average
+                self.plot_seqAvg(df=dfEcoseries[f + ' - ' + stage], label=f, ax=axs[s], CI=0.8, window=365)
+            axs[s].set_title(stage)
+            axs[s].set_xlim(1)
+        
         plt.legend(loc='best')
+        g.add_subplot(111, frameon=False)
+        plt.tick_params(labelcolor='none', which='both', top=False, bottom=False, left=False, right=False)
+        plt.ylabel('Sequence-averaged habitat area / Bankfull area', labelpad=10)
+        plt.xlabel('Sequence window size (years)')
+        plt.grid(False)
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.svg')
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.pdf')
         plt.close()
