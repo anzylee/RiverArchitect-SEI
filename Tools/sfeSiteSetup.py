@@ -16,11 +16,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import seaborn as sns
+import tkinter as tk
 
 '''
-For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before.
+For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before. Same with consecutive, etc
 
 For RCT Discharge it's going to be a lot easier to just ask for a dictionary with the discharge to compare to and the dates as before.
+
+In the RCT Table, there are various entries for different life stages I see three possible solutions:
+    Evaluate all of them and then drop the highest values (i.e. the worst performance is kept) - this would require a conditional statement to check if there are multiple entries for a given fish name/life stage combination, and then evaluate each one separately and drop the unwanted values
+    Have the user run the calculateSuccess function and plot with each different entry (i.e. the user takes on the responsibility of running and organizing different entries) - this would require no change to the current function, but slightly more effort from the user
+    
+    
+    
+Should the ecothreshold also vary with fish name and life stage?
 '''
 
 class model():
@@ -30,15 +39,15 @@ class model():
         Parameters
         ----------
         case : Integer
-            Catchment case number to label and find data.
+            Site of interest case number to label and find data.
         reference_site : Integer, optional
-            DESCRIPTION. The default is 2090.
+            Catchment ID for comparable catchment with empirical data available. The default is 2090.
         case_site_database : String, optional
-            DESCRIPTION. The default is 'input/case_site_database.csv'.
+            Database that contains information connecting the site case number to the catchment ID of the catchment in which it is located. The default is 'input/case_site_database.csv'.
         site_area_database : String, optional
-            DESCRIPTION. The default is 'input/All SFE LOI Characteristics with MAF.xlsx'.
+            Database that contains contributing area data for each catchment ID. The default is 'input/All SFE LOI Characteristics with MAF.xlsx'.
         scenario_path : String, optional
-            DESCRIPTION. The default is 'input/scenarios/'.
+            Location of streamflow timeseries for all scenarios to be analyzed. The default is 'input/scenarios/'.
         sharea_path : String, optional
             DESCRIPTION. The default is "../SHArC/SHArea/".
         fish_names : List of strings, optional
@@ -58,6 +67,7 @@ class model():
         self.ref_site = reference_site
         self.case_area = 6.529 ##FINISH##
         self.ref_area = 26.04775 ##FINISH##
+        self.cfs = True
         
         # Initialize pathnames and headers
         self.s_path = scenario_path
@@ -71,7 +81,7 @@ class model():
     
     def polyArea(self, raster_name, raster_location, limit=0, minlim=True, save_shp=False):
         '''
-        This function calculates the area in the provided raster that meets the conditional expression indicated. The conditional expression can be either a minimum value or a maximum value.
+        Calculates the area in the provided raster that meets the conditional expression indicated. The conditional expression can be either a minimum value or a maximum value. There is also an option to save the shapefile of the calculated area.
         
         Parameters
         ----------
@@ -151,6 +161,8 @@ class model():
     
     def ecoAreaDF(self, case_sharea_path, calc_BfQarea=True, BfQ_area=np.nan):
         '''
+        Calculates the bankfull area, discharge normalized to bankfull discharge, and habitat area normalized to bankfull area given the case site and filename for an excel containing habitat area to discharge information. The excel should contain discharge (labeled as "Discharge") and calculated habitat areas (labeled as "Calculated Area") up to the maximum streamflow for the case site before water begins to leave the channel.
+        
         Parameters
         ----------
         case_sharea_path : String
@@ -167,7 +179,7 @@ class model():
         BfQ_area : float
             The area of the original depth raster that meets the limit requirement.
         dfSHArea_temp : pandas DataFrame
-            Contains information on bankfull area, flow exceedance, and normalized values of each of the previous.
+            Contains information on bankfull area, flow exceedance, and habitat area, and normalized values of each of the previous.
     
         '''
         # Read in SHARrC data
@@ -190,6 +202,8 @@ class model():
     
     def loadTimeSeries(self, timeseries_path, headers, siteid, maxflow, convert_to_cms=True, streamflow_normval=1):
         '''
+        Loads a streamflow timeseries, extracts timeseries values that correspond only to the reference ID, normalizes by dividing by the provided factor, and converts from cubic feet per second to cubic meters per second if indicated. The source data should have a column that indicates the reference ID and the streamflow in cubic feet per second, without any headers. The headers must be provided in the function inputs and must label the streamflow as "Streamflow (cfs)" and the reference ID as "LOI".
+        
         Parameters
         ----------
         timeseriespath : String
@@ -220,6 +234,7 @@ class model():
         
         # Complete any conversion or normalization
         if convert_to_cms:
+            self.cfs = False
             conversion = 0.0566
             units = '($m^3$/s)'
         else:
@@ -238,6 +253,8 @@ class model():
     
     def ecoTimeSeries(self, dfTimeSeries, interp_func, series_name, eco_normval):
         '''
+        
+        
         Parameters
         ----------
         dfTimeSeries : Pandas DataFrame
@@ -296,14 +313,15 @@ class model():
                 fish_period = (fname[0:2] + fstage[0:2]).lower()
                 
                 if verbose: print(fish_period)
-            
+                
+                # Excel spreadsheet that contains data relating streamflow (column labeled 'Discharge') to habitat area (column labeled 'Calculated Area') for each fish name and life stage combination. This excel spreadsheet is created by the user and can be created using RiverArchitect for proper formatting.
                 case_sharea_path = self.sha_path + self.case_name + "/" + self.case_name + "_sharea_" + fish_period + ".xlsx"
             
                 ######################
                 # Bankfull wetted area defined as the area with water present at highest flow in Flow
                 # It is calculated for the first dataset and then remains constant for all following species/life stage datasets of the same river segment
                 if ind == 0:
-                    BfQ_area, dfSHArea_temp = self.ecoAreaDF(case_sharea_path=case_sharea_path, calc_BfQarea=True) # defined in sfeTools
+                    BfQ_area, dfSHArea_temp = self.ecoAreaDF(case_sharea_path=case_sharea_path, calc_BfQarea=True)
                     
                     # Read in flow timeseries
                     dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, maxflow=dfSHArea_temp['Discharge'].values[0], streamflow_normval=self.ref_area/self.case_area)
@@ -339,18 +357,166 @@ class model():
                 ind += 1
         
         return dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long
-    
+        
+    def collectLifeStagePeriod(self, analysis='hydrodynamic'):
+        
+        def collectAnswers():
+            print('########\nDatabase Report\n########')
+            
+            answers = {}
+            i = 0
+            for f in self.f_name:
+                answers[f] = {}
+                
+                for l in self.f_stage:
+                    
+                    # Set flow thresholds to NaN if provided in the wrong format or not provided
+                    if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):
+                        if root.consecvar[i].get():
+                            try:
+                                if root.lowervar[i].get():
+                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), float(root.t1[i].get()), root.consecvar[i].get(), root.lowervar[i].get())
+                                else:
+                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                print(f + ' - ' + l + ' has been saved successfully')
+                            except:
+                                print('Threshold must be entered in number format for ' + f + ' - ' + l + ' if using the consecutive days option. Your database has not been saved correctly and will cause errors.')
+                        else:
+                            try:
+                                if root.lowervar[i].get():
+                                    t1 = float(root.t1[i].get())
+                                    t2 = float(root.t1[i].get())
+                                else:
+                                    t1 = float(root.t1[i].get())
+                                    t2 = np.nan
+                                    root.t2[i].delete(0,tk.END)
+                                    root.t2[i].insert(0, "NA")
+                            except:
+                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
+                            try:
+                                answers[f][l] = ((int(root.startm[i].get()), int(root.startd[i].get())), (int(root.endm[i].get()), int(root.endd[i].get())), t1, t2, root.consecvar[i].get(), root.lowervar[i].get())
+                                print(f + ' - ' + l + ' has been saved successfully')
+                            except:
+                                print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
+                    else:
+                        if root.consecvar[i].get():
+                            try:
+                                answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                print(f + ' - ' + l + ' has been saved successfully')
+                            except:
+                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
+                        else:
+                            try:
+                                t1 = float(root.t1[i].get())
+                            except:
+                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
+                            try:
+                                answers[f][l] = ((int(root.startm[i].get()), int(root.startd[i].get())), (int(root.endm[i].get()), int(root.endd[i].get())), t1, np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                print(f + ' - ' + l + ' has been saved successfully')
+                            except:
+                                print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
+                        
+                    
+                    i += 1
+                    
+            self.life_stage_period = answers
+            
+        root = tk.Tk()
+        
+        tk.Label(root,text="Start Month").grid(row=0,column=2)
+        tk.Label(root,text="Start Day").grid(row=0,column=3)
+        tk.Label(root,text="End Month").grid(row=0,column=4)
+        tk.Label(root,text="End Day").grid(row=0,column=5)
+        tk.Label(root,text="Consecutive").grid(row=0,column=6)
+        tk.Label(root,text="Threshold").grid(row=0,column=7)
+        
+        i = 0
+        root.startm = []
+        root.startd = []
+        root.endm = []
+        root.endd = []
+        root.consecvar = []
+        root.consec = []
+        root.t1 = []
+        if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):    
+            tk.Label(root,text="Upper Threshold\n(T1)").grid(row=0,column=7)
+            tk.Label(root,text="Lower Threshold").grid(row=0,column=8)
+            tk.Label(root,text="Lower Threshold\n(T2)").grid(row=0,column=9)
+            
+            root.t2 = []
+            root.lowervar = []
+            root.lower = []
+        
+        for f in self.f_name:
+            tk.Label(root,text=f + ':').grid(row=i+1,column=0)
+            
+            for l in self.f_stage:
+                tk.Label(root,text=l).grid(row=i+1,column=1)
+                
+                root.startm.append(tk.Entry(root))
+                root.startd.append(tk.Entry(root))
+                root.endm.append(tk.Entry(root))
+                root.endd.append(tk.Entry(root))
+                root.t1.append(tk.Entry(root))
+                
+                root.startm[i].insert(0, "MM")
+                root.startd[i].insert(0, "DD")
+                root.endm[i].insert(0, "MM")
+                root.endd[i].insert(0, "DD")
+                root.t1[i].insert(0, "0.00")
+                
+                root.startm[i].grid(row=i+1,column=2)
+                root.startd[i].grid(row=i+1,column=3)
+                root.endm[i].grid(row=i+1,column=4)
+                root.endd[i].grid(row=i+1,column=5)
+                root.t1[i].grid(row=i+1,column=7)
+                
+                # Whether or not the risk analysis should only count the first set of consecutive days that meet the criteria or any days that meet the criteria
+                root.consecvar.append(tk.IntVar())
+                root.consec.append(tk.Checkbutton(root, variable=root.consecvar[i], onvalue=True, offvalue=False))
+                root.consec[i].grid(row=i+1,column=6)
+                
+                if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):
+                    root.t2.append(tk.Entry(root))
+                    root.t2[i].insert(0, "0.00")
+                    root.t2[i].grid(row=i+1,column=9)
+                    
+                    root.lowervar.append(tk.IntVar())
+                    root.lower.append(tk.Checkbutton(root, variable=root.lowervar[i], onvalue=True, offvalue=False))
+                    root.lower[i].grid(row=i+1,column=8)
+                
+                i += 1
+                
+        tk.Button(root,text="Save Data",command = collectAnswers).grid(row=i+1,column=1)
+        tk.Button(root, text="Close", command=root.destroy).grid(row=i+2,column=1)
+        
+        root.mainloop()
+        
     def calculateSuccess(self, scenarios, eco_threshold=0.1, life_stage_period=False, verbose=False, df='2-d hydrodynamic'):
         '''
 
-         Parameters
+        Parameters
         ----------
         scenarios : List of integers
             List of scenarios to rank.
         eco_threshold : Float, optional
             A number between 0 and 1 that indicates the threshold to which the ecoseries habitat area to bankfull area ratio should be compared. The default is 0.1.
         life_stage_period : Dictionary of dictionaries, optional
-            A dictionary that contains a dictionary of tuples for each species. Each species dictionary contains a tuple of length 3 for each life stage. The tuple indicates: ((start month, start day), (end month, end day), Including). Including is a boolean variable that indicates whether the date range to be evaluated is inside the date range indicated or outside the date range. The default for life_stage_period is False, which indicates the default dictionary should be used.
+            A dictionary that contains a dictionary of tuples for each species. Each species dictionary contains a tuple of length 3 for each life stage. The tuple indicates: ((start month, start day), (end month, end day), T1, T2, Consecutive, Lower).
+            T1 : Float
+                A variable that indicates the primary Riffle Crest Thalweg (RCT) determined flow threshold for discharge for the reference watershed above which success is indicated.
+            T2 : Float
+                A variable that indicates the secondary Riffle Crest Thalweg (RCT) determined flow threshold for discharge for the reference watershed above which success is indicated. The default for T2 is False, which indicates it is not used.
+            Consecutive : Boolean
+                A variable that indicates how the success is evaluated according to the two T variables.
+                'True' - If T1 and T2 are provided, indicates that the start of the period is the last date when the discharge drops below T1 and the end of the period is the first date when the discharge drops below T2. If only T1 is provided, indicates that the start of the period is the date provided and the end of the period is the first date when the discharge drops below T1. The number of successful days is the number of consecutive days counted.
+                'False' - If T1 and T2 are provided, indicates that any days that are between T1 and T2 during the period between the start and end dates are counted as successful days. If only T1 is provided, indicates that any days that are above T1 during the period between the start and end dates are counted as successful days.
+            Lower : Boolean
+                A variable that indicates if the T2 variable is used or not.
+                'True' - T1 and T2 are used.
+                'False' - Only T1 is used.
+                
+            The default for life_stage_period is False, which indicates the default dictionary should be used.
         verbose : Boolean, optional
             Indicates if progress of the analysis should be printed in the dialog. The default is False.
 
@@ -364,13 +530,13 @@ class model():
         if not(isinstance(life_stage_period, dict)):
             life_stage_period = {}
             life_stage_period['Chinook Salmon'] = {}
-            life_stage_period['Chinook Salmon']['fry'] = ((1,1),(12,31),True)
-            life_stage_period['Chinook Salmon']['juvenile'] = ((1,1),(12,31), True)
-            life_stage_period['Chinook Salmon']['spawn'] = ((1,1),(12,31), True)
+            life_stage_period['Chinook Salmon']['fry'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
+            life_stage_period['Chinook Salmon']['juvenile'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
+            life_stage_period['Chinook Salmon']['spawn'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
             life_stage_period['Rainbow / Steelhead Trout'] = {}
-            life_stage_period['Rainbow / Steelhead Trout']['fry'] = ((1,1),(12,31), True)
-            life_stage_period['Rainbow / Steelhead Trout']['juvenile'] = ((6,16),(11,30), True)
-            life_stage_period['Rainbow / Steelhead Trout']['spawn'] = ((1,1),(12,31), True)
+            life_stage_period['Rainbow / Steelhead Trout']['fry'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
+            life_stage_period['Rainbow / Steelhead Trout']['juvenile'] = ((6,16),(11,30), eco_threshold, np.nan, False, False)
+            life_stage_period['Rainbow / Steelhead Trout']['spawn'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
         
         # Initialize DataFrame that will contain number of successes
         ecoseries_success = pd.DataFrame()
@@ -387,18 +553,24 @@ class model():
                 
                 if verbose: print(f)
                 
-                for d in life_stage_period[f]:
+                for l in life_stage_period[f]:
                     
-                    if verbose: print(d)
+                    if verbose: print(l)
                     
                     # Create list of dates to include for success ranking for each fish species and life stage combination
                     valid_dates = []
-                    for y in years:
-                        valid_dates.extend(list(pd.date_range(start=str(life_stage_period[f][d][0][0])+'/'+str(life_stage_period[f][d][0][1])+'/'+str(y), end=str(life_stage_period[f][d][1][0])+'/'+str(life_stage_period[f][d][1][1])+'/'+str(y))))
+                    dfEcoseries_temp = dfEcoseries[f + ' - ' + l].copy()
                     
-                    dfEcoseries_temp = dfEcoseries[f + ' - ' + d].copy()
+                    # # Check to see if consecutive
+                    # if life_stage_period[f][l][4]:
+                    #     # If consecutive, then determine if lower threshold is provided
+                    #     if life_stage_period[f][l][5]:
+                            
+                    for y in years:
+                        valid_dates.extend(list(pd.date_range(start=str(life_stage_period[f][l][0][0])+'/'+str(life_stage_period[f][l][0][1])+'/'+str(y), end=str(life_stage_period[f][l][1][0])+'/'+str(life_stage_period[f][l][1][1])+'/'+str(y))))
+                    
                     # Crop Eco Series DataFrame to given dates. The last tuple designates whether the fish period is between the two dates or outside of the two dates.
-                    if life_stage_period[f][d][2]:
+                    if life_stage_period[f][l][2]:
                         dfEcoseries_temp = dfEcoseries_temp[dfEcoseries_temp.index.isin(valid_dates)]
                     else:
                         dfEcoseries_temp = dfEcoseries_temp[~dfEcoseries_temp.index.isin(valid_dates)]
@@ -407,12 +579,12 @@ class model():
                     dfEcoseries_temp = dfEcoseries_temp > eco_threshold
                     
                     # Count all entries above the threshold in each year
-                    numSuccess = pd.DataFrame(dfEcoseries_temp.resample('A').sum()).rename(columns={f + ' - ' + d: "Successes"})
+                    numSuccess = pd.DataFrame(dfEcoseries_temp.resample('A').sum()).rename(columns={f + ' - ' + l: "Successes"})
                     numSuccess['Case'] = self.case
                     numSuccess['Scenario'] = str(s)
                     numSuccess['Fish name'] = f
-                    numSuccess['Life stage'] = d
-                    numSuccess['Fish name - Life stage'] = f + ' - ' + d
+                    numSuccess['Life stage'] = l
+                    numSuccess['Fish name - Life stage'] = f + ' - ' + l
                     
                     ecoseries_success = pd.concat([ecoseries_success, numSuccess])
         
@@ -507,28 +679,33 @@ class model():
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.pdf')
         plt.close()
 
-    def plot_ecorisk(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True):
+    def plot_ecorisk(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True, ):
         '''
         Parameters
         ----------
-        ecoseries_success : TYPE
-            DESCRIPTION.
-        annual_d_threshold : TYPE, optional
-            DESCRIPTION. The default is 40.
-        plt_d_per_yr : TYPE, optional
-            DESCRIPTION. The default is True.
-        plt_success_d : TYPE, optional
-            DESCRIPTION. The default is True.
-        plt_success_yr : TYPE, optional
-            DESCRIPTION. The default is True.
+        ecoseries_success : Pandas DataFrame or List of ints, optional
+            If Pandas DataFrame, contains information for each model period year on how many days of success there are for each species and life stage combination evaluated. If list of scenario IDs, the ecoseries_success DataFrame is created with the default inputs of the calculateSuccess function for the specified scenarios. The default is a list of all the scenarios run in the South Fork Eel River basin through WEAP. To plot results using non-default inputs, calculateSuccess should be run with the specified inputs and the resulting ecoseries_success DataFrame should be provided here for plotting.
+        annual_d_threshold : Integer or Dictionary, optional
+            If integer, indicates the number of days above which a successful year is determined. If dictionary, it must include an integer entry for each fish name and life stage combination that indicates the number of days above which a successful year is determined. The default is 40, meaning the ecorisk threshold must be met at least 40 days in a given year to indicate a successful year.
+        plt_d_per_yr : Boolean, optional
+            Determines if the line graph of number of days for each model year is plotted for all scenario, fish name, and life stage combinations. The default is True.
+        plt_success_d : Boolean, optional
+            Determines if the line graph of cumulative number of successful days over the entire model period is plotted for all scenario, fish name, and life stage combinations. The default is True.
+        plt_success_yr : Boolean, optional
+            Determines if the line graph of number of successful years is plotted for all scenario, fish name, and life stage combinations. The default is True.
 
         Returns
         -------
-        None.
+        ecoseries_success : Pandas DataFrame
+            The dataset provided as input or created using the calculateSuccess default inputs depending on user input.
+        cumulative_days : Pandas DataFrame
+            A dataset with the number of cumulative successful days as determined using the eco_threshold provided in the calculateSuccess function over the entire model period for each scenario, fish name, and life stage combination.
+        cumulative_years : Pandas DataFrame
+            A dataset with the number of cumulative successful years as determined according to annual_d_threshold over the entire model period for each scenario, fish name, and life stage combination.
 
         '''
         
-        # Check to see if ecoseries_success is list of scenarios, if it is run calculateSuccess
+        # Check to see if ecoseries_success is list of scenarios, if it is, then run calculateSuccess
         if isinstance(ecoseries_success, list):
             ecoseries_success = self.calculateSuccess(ecoseries_success, verbose=True)
         
