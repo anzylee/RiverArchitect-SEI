@@ -375,7 +375,7 @@ class model():
                         if root.consecvar[i].get():
                             try:
                                 if root.lowervar[i].get():
-                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), float(root.t1[i].get()), root.consecvar[i].get(), root.lowervar[i].get())
+                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), float(root.t2[i].get()), root.consecvar[i].get(), root.lowervar[i].get())
                                 else:
                                     answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get())
                                 print(f + ' - ' + l + ' has been saved successfully')
@@ -385,7 +385,7 @@ class model():
                             try:
                                 if root.lowervar[i].get():
                                     t1 = float(root.t1[i].get())
-                                    t2 = float(root.t1[i].get())
+                                    t2 = float(root.t2[i].get())
                                 else:
                                     t1 = float(root.t1[i].get())
                                     t2 = np.nan
