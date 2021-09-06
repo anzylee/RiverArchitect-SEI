@@ -17,19 +17,26 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import seaborn as sns
 import tkinter as tk
+from datetime import timedelta
 
 '''
-For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before. Same with consecutive, etc
+To do:
+Input dialog for initialization
+- 2-d hydrodynamic, rct probe, or rct discharge
+- Reference site, fish names, period, case site
 
-For RCT Discharge it's going to be a lot easier to just ask for a dictionary with the discharge to compare to and the dates as before.
-
-In the RCT Table, there are various entries for different life stages I see three possible solutions:
-    Evaluate all of them and then drop the highest values (i.e. the worst performance is kept) - this would require a conditional statement to check if there are multiple entries for a given fish name/life stage combination, and then evaluate each one separately and drop the unwanted values
-    Have the user run the calculateSuccess function and plot with each different entry (i.e. the user takes on the responsibility of running and organizing different entries) - this would require no change to the current function, but slightly more effort from the user
-    
-    
-    
 Should the ecothreshold also vary with fish name and life stage?
+    2-d hydrodynamic case: allow for default or table input
+
+Graphing for RCT Tables will be by each combination, not combined as in the 2-D hydrodynamic case. Have a limit of 3 columns maximum.
+
+For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before. Same with consecutive, etc YES, CALIFORNIA WATER YEAR, BAKED IN.
+
+Greater than (>)
+
+QUESTIONS:
+
+For the consecutive case with two thresholds, I am using the last date that the flow drops below the higher threshold, is that correct?
 '''
 
 class model():
@@ -492,16 +499,15 @@ class model():
         
         root.mainloop()
         
-    def calculateSuccess(self, scenarios, eco_threshold=0.1, life_stage_period=False, verbose=False, df='2-d hydrodynamic'):
+    def calculateSuccess(self, scenarios, life_stage_period, eco_threshold=0.1, verbose=False, analysis='2-d hydrodynamic'):
         '''
 
         Parameters
         ----------
         scenarios : List of integers
             List of scenarios to rank.
-        eco_threshold : Float, optional
-            A number between 0 and 1 that indicates the threshold to which the ecoseries habitat area to bankfull area ratio should be compared. The default is 0.1.
-        life_stage_period : Dictionary of dictionaries, optional
+            
+        life_stage_period : Dictionary of dictionaries
             A dictionary that contains a dictionary of tuples for each species. Each species dictionary contains a tuple of length 3 for each life stage. The tuple indicates: ((start month, start day), (end month, end day), T1, T2, Consecutive, Lower).
             T1 : Float
                 A variable that indicates the primary Riffle Crest Thalweg (RCT) determined flow threshold for discharge for the reference watershed above which success is indicated.
@@ -516,9 +522,14 @@ class model():
                 'True' - T1 and T2 are used.
                 'False' - Only T1 is used.
                 
-            The default for life_stage_period is False, which indicates the default dictionary should be used.
+        eco_threshold : Float, optional
+            A number between 0 and 1 that indicates the threshold to which the ecoseries habitat area to bankfull area ratio should be compared. The default is 0.1.
+            
         verbose : Boolean, optional
             Indicates if progress of the analysis should be printed in the dialog. The default is False.
+            
+        analysis : String, optional
+            Indicates the type of analysis the user would like to complete. The default is '2-d hydrodynamic'
 
         Returns
         -------
@@ -526,18 +537,7 @@ class model():
             Contains information on the number of successful days during each annual date range period when compared to the eco_threshold for all scenario, life stage, and fish name combinations.
 
         '''
-        # Check to see if a life stage period dictionary is provided and if not, use the default
-        if not(isinstance(life_stage_period, dict)):
-            life_stage_period = {}
-            life_stage_period['Chinook Salmon'] = {}
-            life_stage_period['Chinook Salmon']['fry'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
-            life_stage_period['Chinook Salmon']['juvenile'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
-            life_stage_period['Chinook Salmon']['spawn'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
-            life_stage_period['Rainbow / Steelhead Trout'] = {}
-            life_stage_period['Rainbow / Steelhead Trout']['fry'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
-            life_stage_period['Rainbow / Steelhead Trout']['juvenile'] = ((6,16),(11,30), eco_threshold, np.nan, False, False)
-            life_stage_period['Rainbow / Steelhead Trout']['spawn'] = ((1,1),(12,31), eco_threshold, np.nan, False, False)
-        
+
         # Initialize DataFrame that will contain number of successes
         ecoseries_success = pd.DataFrame()
             
@@ -545,7 +545,24 @@ class model():
             
             if verbose: print(s)
             
-            dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long = self.processData(s)
+            if analysis == '2-d hydrodynamic':
+                dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long = self.processData(s)
+                
+            # elif analysis == 'rct probe':
+            #     return 'rct probe'
+                
+            # elif analysis == 'rct discharge':
+                
+                
+            #     # Create an ecoseries dataframe using discharge data for all entries
+            #     for f in life_stage_period:
+                    
+            #         for l in life_stage_period[f]:
+            #             dfEcoseries[f + ' - ' + l]
+                
+            else:
+                print('The variable analysis much be input as one of the following options: \'2-d hydrodynamic\', \'rct probe\', or \'rct discharge\'. Your data was not evaluated.')
+                return
             
             years = np.unique(dfTimeSeries.index.year.values)
             
@@ -559,27 +576,100 @@ class model():
                     
                     # Create list of dates to include for success ranking for each fish species and life stage combination
                     valid_dates = []
-                    dfEcoseries_temp = dfEcoseries[f + ' - ' + l].copy()
+                    dfEcorisk_temp = dfEcoseries[f + ' - ' + l].copy()
                     
-                    # # Check to see if consecutive
-                    # if life_stage_period[f][l][4]:
-                    #     # If consecutive, then determine if lower threshold is provided
-                    #     if life_stage_period[f][l][5]:
+                    # Check to see if consecutive
+                    if life_stage_period[f][l][4]:
+                        
+                        # If consecutive, then determine if lower threshold is provided
+                        if life_stage_period[f][l][5]:
                             
-                    for y in years:
-                        valid_dates.extend(list(pd.date_range(start=str(life_stage_period[f][l][0][0])+'/'+str(life_stage_period[f][l][0][1])+'/'+str(y), end=str(life_stage_period[f][l][1][0])+'/'+str(life_stage_period[f][l][1][1])+'/'+str(y))))
+                            # If two thresholds, find the last date that the flow is greater than the first threshold and the first date that the flow is less than or equal to the second threshold
+                            dfEcorisk_temp_gt1 = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
+                            dfEcorisk_temp_lt2 = dfEcorisk_temp[dfEcorisk_temp <= life_stage_period[f][l][3]]
+                            
+                            for y in years:
+                                # Create a subset for each model year
+                                dfDates_temp = dfEcorisk_temp_gt1.copy()
+                                dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start='10/01/'+str(y), end='09/30/'+str(y+1))))]
+                                
+                                # Check to make sure there are values greater than the first threshold
+                                if dfDates_temp.shape[0] > 0:
+                                    # startdate is the last entry of each year that is less than or equal to the first threshold
+                                    startdate = dfDates_temp.index[-1]
+                                    
+                                    dfDates_temp = dfEcorisk_temp_lt2.copy()
+                                    dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=startdate, end='09/30/'+str(y+1))))]
+                                    
+                                    # Check to make sure there are values less than the second threshold
+                                    if dfDates_temp.shape[0] > 0:
+                                        # enddate is the first entry following startdate that is less than or equal to the second threshold
+                                        enddate = dfDates_temp.index[0]
+                                    else:
+                                        enddate = '09/30/'+str(y+1)
+                                    
+                                    valid_dates.extend(list(pd.date_range(start=startdate+timedelta(days=1), end=enddate-timedelta(days=1))))
+                                    
+                        else:
+                            # If only one threshold, find the first date that the data series is above the threshold and the first date it falls below the threshold
+                            dfEcorisk_temp_lt = dfEcorisk_temp[dfEcorisk_temp <= life_stage_period[f][l][2]]
+                            dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
+                            
+                            for y in years:
+                                # Create a subset for each model year
+                                dfDates_temp = dfEcorisk_temp_gt.copy()
+                                dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start='10/01/'+str(y), end='09/30/'+str(y+1))))]
+                                
+                                # Check to make sure there are values greater than the threshold
+                                if dfDates_temp.shape[0] > 0:
+                                    # startdate is the first entry of each year that is greater than the threshold
+                                    startdate = dfDates_temp.index[0]
+                                    
+                                    dfDates_temp = dfEcorisk_temp_lt.copy()
+                                    dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=startdate, end='09/30/'+str(y+1))))]
+                                    
+                                    # Check to make sure there are values less than the threshold
+                                    if dfDates_temp.shape[0] > 0:
+                                        # enddate is the first entry of each year that is less than the threshold
+                                        enddate = dfDates_temp.index[0]
+                                    else:
+                                        enddate = '09/30/'+str(y+1)
+                                        
+                                    valid_dates.extend(list(pd.date_range(start=startdate, end=enddate-timedelta(days=1))))
                     
-                    # Crop Eco Series DataFrame to given dates. The last tuple designates whether the fish period is between the two dates or outside of the two dates.
-                    if life_stage_period[f][l][2]:
-                        dfEcoseries_temp = dfEcoseries_temp[dfEcoseries_temp.index.isin(valid_dates)]
                     else:
-                        dfEcoseries_temp = dfEcoseries_temp[~dfEcoseries_temp.index.isin(valid_dates)]
                     
-                    # Determine if each entry meets the Eco Series Threshold
-                    dfEcoseries_temp = dfEcoseries_temp > eco_threshold
+                        # If not consecutive, create a valid date subset for each model year based on given start and end dates
+                        for y in years:
+                            startyear = y
+                            endyear = y
+                    
+                            # If start or end month are before October, put start or end date in the following calendar year
+                            if life_stage_period[f][l][0][0] < 10:
+                                startyear += 1
+                            if life_stage_period[f][l][1][0] < 10:
+                                endyear += 1
+                                
+                            # Determine if lower threshold is provided
+                            if life_stage_period[f][l][5]:
+                                # If two thresholds, count all days between start and end dates that are less than or equal to the first threshold and greater than the second threshold
+                                dfEcorisk_temp_btw = dfEcorisk_temp[(dfEcorisk_temp <= life_stage_period[f][l][2]) & (dfEcorisk_temp > life_stage_period[f][l][3])]
+                                dfDates_temp = dfEcorisk_temp_btw.copy()
+                                
+                            else:
+                                # If only one threshold, count all days between start and end dates that are above the threshold
+                                dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
+                                dfDates_temp = dfEcorisk_temp_gt.copy()
+                            
+                            # Create dataframe with values meeting the threshold(s) between the dates indicated in the dictionary provided
+                            dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=str(life_stage_period[f][l][0][0])+'/'+str(life_stage_period[f][l][0][1])+'/'+str(startyear), end=str(life_stage_period[f][l][1][0])+'/'+str(life_stage_period[f][l][1][1])+'/'+str(endyear))))]
+                                
+                            valid_dates.extend(list(dfDates_temp.index))
+                    
+                    dfEcorisk_temp = dfEcorisk_temp[dfEcorisk_temp.index.isin(valid_dates)]
                     
                     # Count all entries above the threshold in each year
-                    numSuccess = pd.DataFrame(dfEcoseries_temp.resample('A').sum()).rename(columns={f + ' - ' + l: "Successes"})
+                    numSuccess = pd.DataFrame(dfEcorisk_temp.resample('A-OCT').count()).rename(columns={f + ' - ' + l: "Successes"})
                     numSuccess['Case'] = self.case
                     numSuccess['Scenario'] = str(s)
                     numSuccess['Fish name'] = f
