@@ -37,6 +37,14 @@ Greater than (>)
 QUESTIONS:
 
 For the consecutive case with two thresholds, I am using the last date that the flow drops below the higher threshold, is that correct?
+
+What should we do about maxflow for RCT option?
+
+Only two of the reference sites have streamflow from WEAP, what should we do?
+
+For the discharge option, I am normalizing by the ratio of reference site to case site. Is that correct?
+
+There are 5 points in the probe file. Does that mean you want me to check the depth at each of those points? Does it have to meet the threshold at all the points or just one of them?
 '''
 
 class model():
@@ -382,9 +390,9 @@ class model():
                         if root.consecvar[i].get():
                             try:
                                 if root.lowervar[i].get():
-                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), float(root.t2[i].get()), root.consecvar[i].get(), root.lowervar[i].get())
+                                    answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), float(root.t2[i].get()), root.consecvar[i].get(), root.lowervar[i].get()]
                                 else:
-                                    answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                    answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
                                 print(f + ' - ' + l + ' has been saved successfully')
                             except:
                                 print('Threshold must be entered in number format for ' + f + ' - ' + l + ' if using the consecutive days option. Your database has not been saved correctly and will cause errors.')
@@ -401,14 +409,14 @@ class model():
                             except:
                                 print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
                             try:
-                                answers[f][l] = ((int(root.startm[i].get()), int(root.startd[i].get())), (int(root.endm[i].get()), int(root.endd[i].get())), t1, t2, root.consecvar[i].get(), root.lowervar[i].get())
+                                answers[f][l] = [[int(root.startm[i].get()), int(root.startd[i].get())], [int(root.endm[i].get()), int(root.endd[i].get())], t1, t2, root.consecvar[i].get(), root.lowervar[i].get()]
                                 print(f + ' - ' + l + ' has been saved successfully')
                             except:
                                 print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
                     else:
                         if root.consecvar[i].get():
                             try:
-                                answers[f][l] = ((np.nan, np.nan), (np.nan, np.nan), float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
                                 print(f + ' - ' + l + ' has been saved successfully')
                             except:
                                 print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
@@ -418,7 +426,7 @@ class model():
                             except:
                                 print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
                             try:
-                                answers[f][l] = ((int(root.startm[i].get()), int(root.startd[i].get())), (int(root.endm[i].get()), int(root.endd[i].get())), t1, np.nan, root.consecvar[i].get(), root.lowervar[i].get())
+                                answers[f][l] = [[int(root.startm[i].get()), int(root.startd[i].get())], [int(root.endm[i].get()), int(root.endd[i].get())], t1, np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
                                 print(f + ' - ' + l + ' has been saved successfully')
                             except:
                                 print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
@@ -547,22 +555,41 @@ class model():
             
             if analysis == '2-d hydrodynamic':
                 dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long = self.processData(s)
-                
-            # elif analysis == 'rct probe':
-            #     return 'rct probe'
-                
-            # elif analysis == 'rct discharge':
-                
-                
-            #     # Create an ecoseries dataframe using discharge data for all entries
-            #     for f in life_stage_period:
-                    
-            #         for l in life_stage_period[f]:
-            #             dfEcoseries[f + ' - ' + l]
-                
+            
             else:
-                print('The variable analysis much be input as one of the following options: \'2-d hydrodynamic\', \'rct probe\', or \'rct discharge\'. Your data was not evaluated.')
-                return
+                
+                if (analysis == 'rct probe') or (analysis == 'rct discharge'):
+                        
+                    timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(s)+".csv"
+                    
+                    # Excel spreadsheet that contains data relating streamflow (column labeled 'Discharge') to habitat area (column labeled 'Calculated Area') for each fish name and life stage combination. This excel spreadsheet is created by the user and can be created using RiverArchitect for proper formatting. The path used for the RCT Table discharge needs is the first available, which is for 'chfr' 
+                    case_sharea_path = self.sha_path + self.case_name + "/" + self.case_name + "_sharea_chfr.xlsx"
+                    
+                    # Bankfull wetted area (BfQ_area) is unused, therefore fill with dummy of 1
+                    BfQ_area, dfSHArea_temp = self.ecoAreaDF(case_sharea_path=case_sharea_path, calc_BfQarea=False, BfQ_area=1)
+                        
+                    # Read in flow timeseries for reference site and convert to equivalent streamflow in case site
+                    dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, maxflow=dfSHArea_temp['Discharge'].values[0], streamflow_normval=self.ref_area/self.case_area)
+                    self.streamflowUnits = dfTimeSeries.columns[0]
+                    
+                    dfEcoseries = pd.DataFrame(index=dfTimeSeries.index)
+                    
+                    # Create an ecoseries dataframe using discharge data for all entries, this will be the Ecoseries DataFrame for the 'rct discharge option'
+                    for f in life_stage_period:
+                        
+                        for l in life_stage_period[f]:
+                            # Convert reference site thresholds to case site thresholds
+                            life_stage_period[f][l][2] = life_stage_period[f][l][2]/(self.ref_area/self.case_area)
+                            life_stage_period[f][l][3] = life_stage_period[f][l][3]/(self.ref_area/self.case_area)
+                  
+                            dfEcoseries[f + ' - ' + l] = dfTimeSeries.values.ravel()
+                        
+                    # if analysis == 'rct probe':
+                    #     return 'rct probe'
+                        
+                else:
+                    print('The variable analysis much be input as one of the following options: \'2-d hydrodynamic\', \'rct probe\', or \'rct discharge\'. Your data was not evaluated.')
+                    return
             
             years = np.unique(dfTimeSeries.index.year.values)
             
@@ -606,7 +633,7 @@ class model():
                                         # enddate is the first entry following startdate that is less than or equal to the second threshold
                                         enddate = dfDates_temp.index[0]
                                     else:
-                                        enddate = '09/30/'+str(y+1)
+                                        enddate = pd.to_datetime('09/30/'+str(y+1))
                                     
                                     valid_dates.extend(list(pd.date_range(start=startdate+timedelta(days=1), end=enddate-timedelta(days=1))))
                                     
@@ -633,7 +660,7 @@ class model():
                                         # enddate is the first entry of each year that is less than the threshold
                                         enddate = dfDates_temp.index[0]
                                     else:
-                                        enddate = '09/30/'+str(y+1)
+                                        enddate = pd.to_datetime('09/30/'+str(y+1))
                                         
                                     valid_dates.extend(list(pd.date_range(start=startdate, end=enddate-timedelta(days=1))))
                     
@@ -678,7 +705,7 @@ class model():
                     
                     ecoseries_success = pd.concat([ecoseries_success, numSuccess])
         
-        return ecoseries_success
+        return ecoseries_success, dfEcoseries
             
     
     def caseBankfullQtoALinePlot(self, dfSHArea):
