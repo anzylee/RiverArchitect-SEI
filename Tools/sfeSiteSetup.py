@@ -18,6 +18,7 @@ from scipy.interpolate import interp1d
 import seaborn as sns
 import tkinter as tk
 from datetime import timedelta
+import sfeGUI
 
 '''
 To do:
@@ -30,26 +31,32 @@ Should the ecothreshold also vary with fish name and life stage?
 
 Graphing for RCT Tables will be by each combination, not combined as in the 2-D hydrodynamic case. Have a limit of 3 columns maximum.
 
+ADD IN PNG OPTION FOR ALL GRAPHS
+
 For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before. Same with consecutive, etc YES, CALIFORNIA WATER YEAR, BAKED IN.
 
 Greater than (>)
 
+For the consecutive case with two thresholds, I am using the last date that the flow drops below the higher threshold, is that correct? THIS IS CORRECT, SHOW DECISIONS IN GUI
+
+What should we do about maxflow for RCT option? MAKE IT AN OPTION, FOR RCT DO NOT LIMIT BY MAX FLOW, FOR 2-D HYDRODYNAMIC DO LIMIT BY MAX FLOW
+
+Only two of the reference sites have streamflow from WEAP, what should we do? EMAIL CHUCK ABOUT RERUNNING WEAP WITH THE 7 REFERENCE STREAMS
+
+For the discharge option, I am normalizing by the ratio of reference site to case site. Is that correct? DISCHARGE OPTION DOES NOT REQUIRE ANY CONVERSIONS (EXCEPT MAYBE FOR VISUALIZATION). PROBE REQUIRES CONVERSION OF STREAMFLOW FOR CALCULATING PROBE DEPTH, BUT DOES NOT REQUIRE CONVERSION OF THE RCT DEPTH THRESHOLD.
+
+There are 5 points in the probe file. Does that mean you want me to check the depth at each of those points? Does it have to meet the threshold at all the points or just one of them? JUST CHECK THE MOST UPSTREAM ONE, PROBE.SHP IS UPDATED, update code to just use the first point
+
+2-D HYDRODYNAMIC SHOULD ONLY HAVE ONE THRESHOLD OPTION (actually, add in a second window in the custom option that allows for flow or depth)
+
 QUESTIONS:
 
-For the consecutive case with two thresholds, I am using the last date that the flow drops below the higher threshold, is that correct?
-
-What should we do about maxflow for RCT option?
-
-Only two of the reference sites have streamflow from WEAP, what should we do?
-
-For the discharge option, I am normalizing by the ratio of reference site to case site. Is that correct?
-
-There are 5 points in the probe file. Does that mean you want me to check the depth at each of those points? Does it have to meet the threshold at all the points or just one of them?
+It would be great to get the names of the watersheds/sites, so we could include them in the drop-down lists
 '''
 
 class model():
     # Initializer / Instance attributes
-    def __init__(self, case, reference_site=2090, case_site_database='input/case_site_database.csv', site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', sharea_path="../SHArC/SHArea/", fish_names=['Chinook Salmon', 'Rainbow / Steelhead Trout'], fish_stages=['fry','juvenile','spawn']):
+    def __init__(self, site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', sharea_path="../SHArC/SHArea/", fish_names=['Chinook Salmon', 'Rainbow / Steelhead Trout'], fish_stages=['fry','juvenile','spawn']):
         '''
         Parameters
         ----------
@@ -74,12 +81,34 @@ class model():
         -------
         Model object.
         '''
+        # Set the analysis type
+        self.modelType = sfeGUI.chooseModel()
+        
+        # Set the streamflow reference watershed
+        self.ref_site = sfeGUI.chooseRefSite()
+        
+        # Set the hydrodynamic case site watershed
+        if (self.modelType == 'rct probe') or (self.modelType == '2-d hydrodynamic'):
+            self.case, self.case_site = sfeGUI.chooseCaseSite()
+            if (self.modelType == 'rct probe'):
+                self.case_name = "rct-probe_sfe-" + '{0:d}'.format(self.case)
+            else:
+                self.case_name = "2d-hydro_sfe-" + '{0:d}'.format(self.case)
+        
+        # Set the RCT paradigm model watershed
+        if (self.modelType == 'rct probe') or (self.modelType == 'rct discharge'):
+            rct_site = sfeGUI.chooseRCTParadigm()
+            self.rct_site = rct_site
+            
+            if self.modelType == 'rct discharge':
+                self.case_site = rct_site
+                self.case_name = 'rct-discharge_' + '{0:d}'.format(self.case_site)
+            else:
+                self.case_name = self.case_name + '_{0:d}'.format(rct_site)
+        
+        self.life_stage_period = sfeGUI.setThresholds(self)
+        
         # Initialize case and reference IDs and areas
-        #cs_db = pd.read_csv(case_site_database) ##FINISH##
-        self.case = case
-        self.case_name = "sfe_" + '{0:d}'.format(case)
-        self.case_site = 4370 ##FINISH##
-        self.ref_site = reference_site
         self.case_area = 6.529 ##FINISH##
         self.ref_area = 26.04775 ##FINISH##
         self.cfs = True
@@ -373,141 +402,7 @@ class model():
         
         return dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long
         
-    def collectLifeStagePeriod(self, analysis='hydrodynamic'):
-        
-        def collectAnswers():
-            print('########\nDatabase Report\n########')
-            
-            answers = {}
-            i = 0
-            for f in self.f_name:
-                answers[f] = {}
-                
-                for l in self.f_stage:
-                    
-                    # Set flow thresholds to NaN if provided in the wrong format or not provided
-                    if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):
-                        if root.consecvar[i].get():
-                            try:
-                                if root.lowervar[i].get():
-                                    answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), float(root.t2[i].get()), root.consecvar[i].get(), root.lowervar[i].get()]
-                                else:
-                                    answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
-                                print(f + ' - ' + l + ' has been saved successfully')
-                            except:
-                                print('Threshold must be entered in number format for ' + f + ' - ' + l + ' if using the consecutive days option. Your database has not been saved correctly and will cause errors.')
-                        else:
-                            try:
-                                if root.lowervar[i].get():
-                                    t1 = float(root.t1[i].get())
-                                    t2 = float(root.t2[i].get())
-                                else:
-                                    t1 = float(root.t1[i].get())
-                                    t2 = np.nan
-                                    root.t2[i].delete(0,tk.END)
-                                    root.t2[i].insert(0, "NA")
-                            except:
-                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
-                            try:
-                                answers[f][l] = [[int(root.startm[i].get()), int(root.startd[i].get())], [int(root.endm[i].get()), int(root.endd[i].get())], t1, t2, root.consecvar[i].get(), root.lowervar[i].get()]
-                                print(f + ' - ' + l + ' has been saved successfully')
-                            except:
-                                print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
-                    else:
-                        if root.consecvar[i].get():
-                            try:
-                                answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
-                                print(f + ' - ' + l + ' has been saved successfully')
-                            except:
-                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
-                        else:
-                            try:
-                                t1 = float(root.t1[i].get())
-                            except:
-                                print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
-                            try:
-                                answers[f][l] = [[int(root.startm[i].get()), int(root.startd[i].get())], [int(root.endm[i].get()), int(root.endd[i].get())], t1, np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
-                                print(f + ' - ' + l + ' has been saved successfully')
-                            except:
-                                print('Start and End Months and Days must be entered for ' + f + ' - ' + l + ' in integer format. Your database has not been saved correctly and will cause errors.')
-                        
-                    
-                    i += 1
-                    
-            self.life_stage_period = answers
-            
-        root = tk.Tk()
-        
-        tk.Label(root,text="Start Month").grid(row=0,column=2)
-        tk.Label(root,text="Start Day").grid(row=0,column=3)
-        tk.Label(root,text="End Month").grid(row=0,column=4)
-        tk.Label(root,text="End Day").grid(row=0,column=5)
-        tk.Label(root,text="Consecutive").grid(row=0,column=6)
-        tk.Label(root,text="Threshold").grid(row=0,column=7)
-        
-        i = 0
-        root.startm = []
-        root.startd = []
-        root.endm = []
-        root.endd = []
-        root.consecvar = []
-        root.consec = []
-        root.t1 = []
-        if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):    
-            tk.Label(root,text="Upper Threshold\n(T1)").grid(row=0,column=7)
-            tk.Label(root,text="Lower Threshold").grid(row=0,column=8)
-            tk.Label(root,text="Lower Threshold\n(T2)").grid(row=0,column=9)
-            
-            root.t2 = []
-            root.lowervar = []
-            root.lower = []
-        
-        for f in self.f_name:
-            tk.Label(root,text=f + ':').grid(row=i+1,column=0)
-            
-            for l in self.f_stage:
-                tk.Label(root,text=l).grid(row=i+1,column=1)
-                
-                root.startm.append(tk.Entry(root))
-                root.startd.append(tk.Entry(root))
-                root.endm.append(tk.Entry(root))
-                root.endd.append(tk.Entry(root))
-                root.t1.append(tk.Entry(root))
-                
-                root.startm[i].insert(0, "MM")
-                root.startd[i].insert(0, "DD")
-                root.endm[i].insert(0, "MM")
-                root.endd[i].insert(0, "DD")
-                root.t1[i].insert(0, "0.00")
-                
-                root.startm[i].grid(row=i+1,column=2)
-                root.startd[i].grid(row=i+1,column=3)
-                root.endm[i].grid(row=i+1,column=4)
-                root.endd[i].grid(row=i+1,column=5)
-                root.t1[i].grid(row=i+1,column=7)
-                
-                # Whether or not the risk analysis should only count the first set of consecutive days that meet the criteria or any days that meet the criteria
-                root.consecvar.append(tk.IntVar())
-                root.consec.append(tk.Checkbutton(root, variable=root.consecvar[i], onvalue=True, offvalue=False))
-                root.consec[i].grid(row=i+1,column=6)
-                
-                if (analysis == 'rctprobe') or (analysis == 'rctdischarge'):
-                    root.t2.append(tk.Entry(root))
-                    root.t2[i].insert(0, "0.00")
-                    root.t2[i].grid(row=i+1,column=9)
-                    
-                    root.lowervar.append(tk.IntVar())
-                    root.lower.append(tk.Checkbutton(root, variable=root.lowervar[i], onvalue=True, offvalue=False))
-                    root.lower[i].grid(row=i+1,column=8)
-                
-                i += 1
-                
-        tk.Button(root,text="Save Data",command = collectAnswers).grid(row=i+1,column=1)
-        tk.Button(root, text="Close", command=root.destroy).grid(row=i+2,column=1)
-        
-        root.mainloop()
-        
-    def calculateSuccess(self, scenarios, life_stage_period, eco_threshold=0.1, verbose=False, analysis='2-d hydrodynamic'):
+    def calculateSuccess(self, scenarios, eco_threshold=0.1, verbose=False, analysis='2-d hydrodynamic'):
         '''
 
         Parameters
@@ -575,12 +470,12 @@ class model():
                     dfEcoseries = pd.DataFrame(index=dfTimeSeries.index)
                     
                     # Create an ecoseries dataframe using discharge data for all entries, this will be the Ecoseries DataFrame for the 'rct discharge option'
-                    for f in life_stage_period:
+                    for f in self.life_stage_period:
                         
-                        for l in life_stage_period[f]:
+                        for l in self.life_stage_period[f]:
                             # Convert reference site thresholds to case site thresholds
-                            life_stage_period[f][l][2] = life_stage_period[f][l][2]/(self.ref_area/self.case_area)
-                            life_stage_period[f][l][3] = life_stage_period[f][l][3]/(self.ref_area/self.case_area)
+                            self.life_stage_period[f][l][2] = self.life_stage_period[f][l][2]/(self.ref_area/self.case_area)
+                            self.life_stage_period[f][l][3] = self.life_stage_period[f][l][3]/(self.ref_area/self.case_area)
                   
                             dfEcoseries[f + ' - ' + l] = dfTimeSeries.values.ravel()
                         
@@ -593,11 +488,11 @@ class model():
             
             years = np.unique(dfTimeSeries.index.year.values)
             
-            for f in life_stage_period:
+            for f in self.life_stage_period:
                 
                 if verbose: print(f)
                 
-                for l in life_stage_period[f]:
+                for l in self.life_stage_period[f]:
                     
                     if verbose: print(l)
                     
@@ -606,14 +501,14 @@ class model():
                     dfEcorisk_temp = dfEcoseries[f + ' - ' + l].copy()
                     
                     # Check to see if consecutive
-                    if life_stage_period[f][l][4]:
+                    if self.life_stage_period[f][l][4]:
                         
                         # If consecutive, then determine if lower threshold is provided
-                        if life_stage_period[f][l][5]:
+                        if self.life_stage_period[f][l][5]:
                             
                             # If two thresholds, find the last date that the flow is greater than the first threshold and the first date that the flow is less than or equal to the second threshold
-                            dfEcorisk_temp_gt1 = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
-                            dfEcorisk_temp_lt2 = dfEcorisk_temp[dfEcorisk_temp <= life_stage_period[f][l][3]]
+                            dfEcorisk_temp_gt1 = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
+                            dfEcorisk_temp_lt2 = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[f][l][3]]
                             
                             for y in years:
                                 # Create a subset for each model year
@@ -639,8 +534,8 @@ class model():
                                     
                         else:
                             # If only one threshold, find the first date that the data series is above the threshold and the first date it falls below the threshold
-                            dfEcorisk_temp_lt = dfEcorisk_temp[dfEcorisk_temp <= life_stage_period[f][l][2]]
-                            dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
+                            dfEcorisk_temp_lt = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[f][l][2]]
+                            dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
                             
                             for y in years:
                                 # Create a subset for each model year
@@ -672,24 +567,24 @@ class model():
                             endyear = y
                     
                             # If start or end month are before October, put start or end date in the following calendar year
-                            if life_stage_period[f][l][0][0] < 10:
+                            if self.life_stage_period[f][l][0][0] < 10:
                                 startyear += 1
-                            if life_stage_period[f][l][1][0] < 10:
+                            if self.life_stage_period[f][l][1][0] < 10:
                                 endyear += 1
                                 
                             # Determine if lower threshold is provided
-                            if life_stage_period[f][l][5]:
+                            if self.life_stage_period[f][l][5]:
                                 # If two thresholds, count all days between start and end dates that are less than or equal to the first threshold and greater than the second threshold
-                                dfEcorisk_temp_btw = dfEcorisk_temp[(dfEcorisk_temp <= life_stage_period[f][l][2]) & (dfEcorisk_temp > life_stage_period[f][l][3])]
+                                dfEcorisk_temp_btw = dfEcorisk_temp[(dfEcorisk_temp <= self.life_stage_period[f][l][2]) & (dfEcorisk_temp > self.life_stage_period[f][l][3])]
                                 dfDates_temp = dfEcorisk_temp_btw.copy()
                                 
                             else:
                                 # If only one threshold, count all days between start and end dates that are above the threshold
-                                dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > life_stage_period[f][l][2]]
+                                dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
                                 dfDates_temp = dfEcorisk_temp_gt.copy()
                             
                             # Create dataframe with values meeting the threshold(s) between the dates indicated in the dictionary provided
-                            dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=str(life_stage_period[f][l][0][0])+'/'+str(life_stage_period[f][l][0][1])+'/'+str(startyear), end=str(life_stage_period[f][l][1][0])+'/'+str(life_stage_period[f][l][1][1])+'/'+str(endyear))))]
+                            dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=str(self.life_stage_period[f][l][0][0])+'/'+str(self.life_stage_period[f][l][0][1])+'/'+str(startyear), end=str(self.life_stage_period[f][l][1][0])+'/'+str(self.life_stage_period[f][l][1][1])+'/'+str(endyear))))]
                                 
                             valid_dates.extend(list(dfDates_temp.index))
                     
