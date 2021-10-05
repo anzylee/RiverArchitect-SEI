@@ -72,7 +72,7 @@ def chooseCaseSite():
 
     tk.Label(root,text="Topographic Case Site").grid(row=0,column=0,sticky="E")
     
-    # Import reference site IDs
+    # Import case site database containing the corresponding LOI for each case site with available data
     dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0)
     caseSiteOptions = {}
     for i, r in dfCase.iterrows():
@@ -161,29 +161,31 @@ def setThresholds(model):
         
     elif (model.modelType == 'rct probe') or (model.modelType == 'rct discharge'):
         
-        dfParadigm = pd.read_excel('C:/Users/MM/Documents/SEI/Water Rights/02_Data and Model/RiverArchitect-SEI-main/Tools/input/RCT_Paradigm_Selection.xlsx', index_col=None, header=0)
+        dfParadigm = pd.read_excel('../Tools/input/RCT_Paradigm_Selection.xlsx', index_col=None, header=0)
         paradigm = dfParadigm[dfParadigm['LOI'] == model.rct_site]
         
         if model.modelType == 'rct discharge':
-            t1name = 'T1 (cms)'
-            t2name = 'T2 (cms)'
+            t_name = 'Discharge\nThreshold {0:d} (m^3/s)'
+            t1 = 'Threshold 1 (cms)'
+            t2 = 'Threshold 2 (cms)'
         else:
-            t1name = 'RCT Probe Depth T1 (m)'
-            t2name = 'RCT Probe Depth T2 (m)'
-            
+            t_name = 'RCT Probe\nThreshold {0:d} (m)'
+            t1 = 'RCT Probe Threshold 1 (m)'
+            t2 = 'RCT Probe Threshold 2 (m)'
+        
         life_stage_period_default = {}
         for i, r in paradigm.iterrows():
             try:
-                life_stage_period_default[r['Fish name']][r['Life stage']] = [[r['Start Month'],r['Start Day']],[r['End Month'],r['End Day']], r[t1name], r[t2name], bool(r['Consecutive']), bool(r['Lower Threshold'])]
+                life_stage_period_default[r['Fish name']][r['Life stage']] = [[r['Start Month'],r['Start Day']],[r['End Month'],r['End Day']], r[t1], r[t2], bool(r['Consecutive']), bool(r['Lower Threshold'])]
             except:
                 life_stage_period_default[r['Fish name']] = {}
-                life_stage_period_default[r['Fish name']][r['Life stage']] = [[r['Start Month'],r['Start Day']],[r['End Month'],r['End Day']], r[t1name], r[t2name], bool(r['Consecutive']), bool(r['Lower Threshold'])]
+                life_stage_period_default[r['Fish name']][r['Life stage']] = [[r['Start Month'],r['Start Day']],[r['End Month'],r['End Day']], r[t1], r[t2], bool(r['Consecutive']), bool(r['Lower Threshold'])]
         
-        life_stage_period = collectLifeStagePeriod(life_stage_period_default, disabled=True)
+        life_stage_period = collectLifeStagePeriod(life_stage_period_default, disabled=True, t_name=t_name)
         
     return life_stage_period
 
-def collectLifeStagePeriod(life_stage_period_default, disabled):
+def collectLifeStagePeriod(life_stage_period_default, disabled, t_name='Habitat/Bankfull Area\nThreshold {0:d} (0-1)'):
     
     def collectAnswers():
         print('########\nDatabase Report\n########')
@@ -201,6 +203,9 @@ def collectLifeStagePeriod(life_stage_period_default, disabled):
                         if root.lowervar[i].get():
                             answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), float(root.t2[i].get()), root.consecvar[i].get(), root.lowervar[i].get()]
                         else:
+                            root.t2[i].delete(0,tk.END)
+                            root.t2[i].insert(0, "NA")
+                            root.t2[i].config(state='disabled')
                             answers[f][l] = [[np.nan, np.nan], [np.nan, np.nan], float(root.t1[i].get()), np.nan, root.consecvar[i].get(), root.lowervar[i].get()]
                         print(f + ' - ' + l + ' has been saved successfully')
                     except:
@@ -215,6 +220,7 @@ def collectLifeStagePeriod(life_stage_period_default, disabled):
                             t2 = np.nan
                             root.t2[i].delete(0,tk.END)
                             root.t2[i].insert(0, "NA")
+                            root.t2[i].config(state='disabled')
                     except:
                         print('Threshold must be entered in number format for ' + f + ' - ' + l + '. Your database has not been saved correctly and will cause errors.')
                     try:
@@ -237,9 +243,9 @@ def collectLifeStagePeriod(life_stage_period_default, disabled):
     tk.Label(root,text="End Day").grid(row=0,column=5,padx=5)
     tk.Label(root,text="Consecutive").grid(row=0,column=6,padx=5)
     tk.Label(root,text="Threshold").grid(row=0,column=7,padx=5)
-    tk.Label(root,text="Threshold 1\n(T1)").grid(row=0,column=7,padx=5)
     tk.Label(root,text="Lower Threshold").grid(row=0,column=8,padx=5)
-    tk.Label(root,text="Threshold 2\n(T2)").grid(row=0,column=9,padx=5)
+    tk.Label(root,text=t_name.format(1)).grid(row=0,column=7,padx=5)
+    tk.Label(root,text=t_name.format(2)).grid(row=0,column=9,padx=5)
     
     i = 0
     root.startm = []
@@ -284,17 +290,17 @@ def collectLifeStagePeriod(life_stage_period_default, disabled):
             
             
             if disabled:
-                root.startm[i].insert(0, str(life_stage_period_default[f][l][0][0]))
+                root.startm[i].insert(0, '{:0.0f}'.format(life_stage_period_default[f][l][0][0]))
                 root.startm[i].config(state='disabled')
-                root.startd[i].insert(0, str(life_stage_period_default[f][l][0][1]))
+                root.startd[i].insert(0, '{:0.0f}'.format(life_stage_period_default[f][l][0][1]))
                 root.startd[i].config(state='disabled')
-                root.endm[i].insert(0, str(life_stage_period_default[f][l][1][0]))
+                root.endm[i].insert(0, '{:0.0f}'.format(life_stage_period_default[f][l][1][0]))
                 root.endm[i].config(state='disabled')
-                root.endd[i].insert(0, str(life_stage_period_default[f][l][1][1]))
+                root.endd[i].insert(0, '{:0.0f}'.format(life_stage_period_default[f][l][1][1]))
                 root.endd[i].config(state='disabled')
-                root.t1[i].insert(0, str(life_stage_period_default[f][l][2]))
+                root.t1[i].insert(0, '{:0.3f}'.format(life_stage_period_default[f][l][2]))
                 root.t1[i].config(state='disabled')
-                root.t2[i].insert(0, "N/A")
+                root.t2[i].insert(0, '{:0.3f}'.format(life_stage_period_default[f][l][3]))
                 root.t2[i].config(state='disabled')
                 root.consec[i].config(state='disabled')
                 root.lower[i].config(state='disabled')
@@ -317,3 +323,37 @@ def collectLifeStagePeriod(life_stage_period_default, disabled):
     root.mainloop()
     
     return life_stage_period
+
+def figureOptions(fig_Path, fig_name):
+    def getEntries():
+        fig_Path = root.pathEntry.get()
+        fig_name = root.nameEntry.get()
+        
+    root = tk.Tk()
+    root.geometry("300x200")
+
+    tk.Label(root,text="Figure Path").grid(row=1,column=0,padx=5)
+    tk.Label(root,text="Figure Name").grid(row=2,column=0,padx=5)
+    
+    root.pathEntry = tk.Entry(root)
+    root.nameEntry = tk.Entry(root)
+    
+    root.pathEntry.grid(row=1,column=1)
+    root.nameEntry.grid(row=2,column=1)
+    
+    root.pathEntry.insert(0, fig_Path)
+    root.nameEntry.insert(0, fig_name)
+    
+    tk.Button(root, text="Save", command=getEntries).grid(row=3,column=0)
+    tk.Button(root, text="Next", command=root.destroy).grid(row=3,column=1)
+    
+    for r in np.arange(4):
+        root.grid_rowconfigure(r, weight=1)
+    
+    for c in np.arange(2):
+        root.grid_columnconfigure(c, weight=1)
+        
+    root.mainloop()
+    
+    return fig_Path, fig_name
+

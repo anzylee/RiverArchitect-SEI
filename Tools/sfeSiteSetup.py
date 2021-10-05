@@ -16,66 +16,54 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import seaborn as sns
-import tkinter as tk
 from datetime import timedelta
+import fnmatch
+import geopandas as gpd
+from pathlib import Path
 import sfeGUI
 
 '''
 To do:
-Input dialog for initialization
-- 2-d hydrodynamic, rct probe, or rct discharge
-- Reference site, fish names, period, case site
-
-Should the ecothreshold also vary with fish name and life stage?
-    2-d hydrodynamic case: allow for default or table input
-
 Graphing for RCT Tables will be by each combination, not combined as in the 2-D hydrodynamic case. Have a limit of 3 columns maximum.
-
-ADD IN PNG OPTION FOR ALL GRAPHS
-
-For the annual number of successful days, currently the year is January - December, excluding any days that are not in the range of days/months defined in the dictionary. We can change this to be the California water year, which would be October-September of the next year, with the same days excluded as before. Same with consecutive, etc YES, CALIFORNIA WATER YEAR, BAKED IN.
-
-Greater than (>)
-
-For the consecutive case with two thresholds, I am using the last date that the flow drops below the higher threshold, is that correct? THIS IS CORRECT, SHOW DECISIONS IN GUI
-
-What should we do about maxflow for RCT option? MAKE IT AN OPTION, FOR RCT DO NOT LIMIT BY MAX FLOW, FOR 2-D HYDRODYNAMIC DO LIMIT BY MAX FLOW
 
 Only two of the reference sites have streamflow from WEAP, what should we do? EMAIL CHUCK ABOUT RERUNNING WEAP WITH THE 7 REFERENCE STREAMS
 
 For the discharge option, I am normalizing by the ratio of reference site to case site. Is that correct? DISCHARGE OPTION DOES NOT REQUIRE ANY CONVERSIONS (EXCEPT MAYBE FOR VISUALIZATION). PROBE REQUIRES CONVERSION OF STREAMFLOW FOR CALCULATING PROBE DEPTH, BUT DOES NOT REQUIRE CONVERSION OF THE RCT DEPTH THRESHOLD.
 
-There are 5 points in the probe file. Does that mean you want me to check the depth at each of those points? Does it have to meet the threshold at all the points or just one of them? JUST CHECK THE MOST UPSTREAM ONE, PROBE.SHP IS UPDATED, update code to just use the first point
-
-2-D HYDRODYNAMIC SHOULD ONLY HAVE ONE THRESHOLD OPTION (actually, add in a second window in the custom option that allows for flow or depth)
+2-D HYDRODYNAMIC SHOULD ONLY HAVE ONE THRESHOLD OPTION (actually, add in a second window in the custom option that allows for flow or depth) - Have not yet added
 
 QUESTIONS:
 
 It would be great to get the names of the watersheds/sites, so we could include them in the drop-down lists
+
+Should we include the reference streamflow site ID in the figure name? Current naming convention is:
+    2-D Hydrodynamic = "2d-hydro_sfe-caseID.png"
+    RCT Probe = "rct-probe_sfe-caseID_rctLOI.png"
+    RCT Discharge = "rct-discharge_rctLOI.png"
 '''
 
 class model():
     # Initializer / Instance attributes
-    def __init__(self, site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', sharea_path="../SHArC/SHArea/", fish_names=['Chinook Salmon', 'Rainbow / Steelhead Trout'], fish_stages=['fry','juvenile','spawn']):
+    def __init__(self, site_area_database='input/All SFE LOI Characteristics with MAF.xlsx', scenario_path='input/scenarios/', sharea_path="../SHArC/SHArea/"):
         '''
         Parameters
         ----------
-        case : Integer
-            Site of interest case number to label and find data.
-        reference_site : Integer, optional
-            Catchment ID for comparable catchment with empirical data available. The default is 2090.
-        case_site_database : String, optional
-            Database that contains information connecting the site case number to the catchment ID of the catchment in which it is located. The default is 'input/case_site_database.csv'.
         site_area_database : String, optional
             Database that contains contributing area data for each catchment ID. The default is 'input/All SFE LOI Characteristics with MAF.xlsx'.
         scenario_path : String, optional
             Location of streamflow timeseries for all scenarios to be analyzed. The default is 'input/scenarios/'.
         sharea_path : String, optional
             DESCRIPTION. The default is "../SHArC/SHArea/".
-        fish_names : List of strings, optional
-            Names for each of the species to be analyzed. The default is ['Chinook Salmon', 'Rainbow / Steelhead Trout'].
-        fish_stages : List of strings, optional
-            Life stages for fish to be analyzed. The default is ['fry','juvenile','spawn'].
+        case : Integer, collected in GUI
+            Case number of study site with available hydrodynamic data to label and find data. This is only implemented for the RCT Probe and 2-D Hydrodynamic model types.
+        case_site : Integer, collected in GUI
+            Corresponding Catchment ID for the study site with available hydrodynamic data.
+        ref_site : Integer, collected in GUI
+            Catchment ID for comparable catchment with empirical streamflow data available. The default is 2090.
+        rct_site : Integer, collected in GUI
+            Catchment ID for comparable catchment with empirical streamflow data available. The default is 2090.
+        life_stage_period : Dictionary, collected in GUI
+            Information on thresholds and temporal restrictions to calculate ecorisk for the species and life stages evaluated. Structure of this dictionary is described in calculateSuccess.
 
         Returns
         -------
@@ -90,10 +78,15 @@ class model():
         # Set the hydrodynamic case site watershed
         if (self.modelType == 'rct probe') or (self.modelType == '2-d hydrodynamic'):
             self.case, self.case_site = sfeGUI.chooseCaseSite()
+            self.case_name = "sfe_" + '{0:d}'.format(self.case)
+            
             if (self.modelType == 'rct probe'):
-                self.case_name = "rct-probe_sfe-" + '{0:d}'.format(self.case)
+                self.fig_name = "rct-probe_sfe-" + '{0:d}'.format(self.case)
             else:
-                self.case_name = "2d-hydro_sfe-" + '{0:d}'.format(self.case)
+                self.fig_name = "2d-hydro_sfe-" + '{0:d}'.format(self.case)
+                # Initialize species names and life stages
+                self.f_name = ['Chinook Salmon', 'Rainbow / Steelhead Trout']
+                self.f_stage = ['fry','juvenile','spawn']
         
         # Set the RCT paradigm model watershed
         if (self.modelType == 'rct probe') or (self.modelType == 'rct discharge'):
@@ -101,27 +94,29 @@ class model():
             self.rct_site = rct_site
             
             if self.modelType == 'rct discharge':
+                self.case = rct_site
                 self.case_site = rct_site
                 self.case_name = 'rct-discharge_' + '{0:d}'.format(self.case_site)
+                self.fig_name = 'rct-discharge_' + '{0:d}'.format(self.case_site)
             else:
-                self.case_name = self.case_name + '_{0:d}'.format(rct_site)
+                self.fig_name = self.fig_name + '_{0:d}'.format(rct_site)
         
         self.life_stage_period = sfeGUI.setThresholds(self)
         
-        # Initialize case and reference IDs and areas
-        self.case_area = 6.529 ##FINISH##
-        self.ref_area = 26.04775 ##FINISH##
+        # Initialize case and reference areas
+        dfLOI = pd.read_excel(site_area_database, index_col=0, header=0)
+        self.case_area = dfLOI.loc[self.case_site]['Contributing Area']
+        self.ref_area = dfLOI.loc[self.ref_site]['Contributing Area']
         self.cfs = True
         
         # Initialize pathnames and headers
         self.s_path = scenario_path
         self.t_headers = list(pd.read_csv('input/SFER_Instance_Results_Template_long.csv').columns)
         self.sha_path = sharea_path
-        self.fig_path = self.sha_path + self.case_name + "/"
+        self.fig_path = '../00_Figures/' + self.case_name + "/"
         
-        # Initialize species names and life stages
-        self.f_name = fish_names
-        self.f_stage = fish_stages
+        self.fig_path, self.fig_name = sfeGUI.figureOptions(self.fig_path, self.fig_name)
+        os.makedirs(self.fig_path, exist_ok=True)
     
     def polyArea(self, raster_name, raster_location, limit=0, minlim=True, save_shp=False):
         '''
@@ -244,7 +239,7 @@ class model():
         
         return BfQ_area, dfSHArea_temp
     
-    def loadTimeSeries(self, timeseries_path, headers, siteid, maxflow, convert_to_cms=True, streamflow_normval=1):
+    def loadTimeSeries(self, timeseries_path, headers, siteid, maxflow=None, convert_to_cms=True, streamflow_normval=1):
         '''
         Loads a streamflow timeseries, extracts timeseries values that correspond only to the reference ID, normalizes by dividing by the provided factor, and converts from cubic feet per second to cubic meters per second if indicated. The source data should have a column that indicates the reference ID and the streamflow in cubic feet per second, without any headers. The headers must be provided in the function inputs and must label the streamflow as "Streamflow (cfs)" and the reference ID as "LOI".
         
@@ -256,8 +251,8 @@ class model():
             Header names for the streamflow time series.
         siteid : Integer
             Site ID number.
-        maxflow : Float
-            Flow above which values should be set to 0.
+        maxflow : Float, optional
+            Flow above which values should be set to 0. The default is None.
         convert_to_cms : Boolean, optional
             Indication if the data should be converted from cubic feet per second to cubic meter per second. The default is True.
         streamflow_normval : Float, optional
@@ -287,15 +282,17 @@ class model():
     
         dfTimeSeries = (np.floor(dfTimeSeries*1000)/1000*conversion) / streamflow_normval
             
-        # Set any discharge above the maxflow (generally maxflow is set to bankfull discharge) to 0
-        dfTimeSeries[(dfTimeSeries > maxflow)] = 0
+        # Set any discharge above the maxflow (generally maxflow is set to bankfull discharge) to 0 in 2-d hydrodynamic mode
+        if (self.modelType == 'rct probe') or (self.modelType == '2-d hydrodynamic'):
+            dfTimeSeries[(dfTimeSeries > maxflow)] = 0
         
         # Convert to DataFrame
         dfTimeSeries = dfTimeSeries.to_frame(name='Discharge '+units)
+        self.streamflowUnits = 'Discharge '+units
         
         return dfTimeSeries
     
-    def ecoTimeSeries(self, dfTimeSeries, interp_func, series_name, eco_normval):
+    def ecoTimeSeries(self, dfTimeSeries, interp_func, series_name, eco_normval=1):
         '''
         
         
@@ -308,7 +305,7 @@ class model():
         series_name : String
             Name of the time series, generally in the format of 'Fish name - life stage'.
         eco_normval : Float
-            Value by which the habitat area should be normalized, generally the bankfull area.
+            Value by which the habitat area should be normalized, generally the bankfull area. The default is 1.
     
         Returns
         -------
@@ -323,7 +320,7 @@ class model():
         
         return eco_series
     
-    def processData(self, scenario, verbose=False):
+    def processData_2dh(self, scenario, verbose=False):
         '''
         This function processes the data for a given set of fish names and life stages for the scenario input.
         
@@ -369,7 +366,6 @@ class model():
                     
                     # Read in flow timeseries
                     dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, maxflow=dfSHArea_temp['Discharge'].values[0], streamflow_normval=self.ref_area/self.case_area)
-                    self.streamflowUnits = dfTimeSeries.columns[0]
                     
                 else:
                     BfQ_area, dfSHArea_temp = self.ecoAreaDF(case_sharea_path=case_sharea_path, calc_BfQarea=False, BfQ_area=BfQ_area)
@@ -400,9 +396,80 @@ class model():
                 dfEcoseries_long = pd.concat([dfEcoseries_long,dfEcoseries_temp])
                 ind += 1
         
-        return dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long
+        return dfSHArea, dfTimeSeries, dfEcoseries, dfEcoseries_long
+    
+    def processData_rctprobe(self, scenario, verbose=False):
+        # Create regression equation that relates streamflow to depth at RCT probe (should this be a separate function?)
+        interptype = 'linear'
+        probe_path_in = os.path.abspath(self.sha_path + self.case_name + "/probe.shp")
+        rasters = fnmatch.filter(fnmatch.filter(os.listdir(r'../01_Conditions/'+self.case_name), '*.tif'), 'h*')
         
-    def calculateSuccess(self, scenarios, eco_threshold=0.1, verbose=False, analysis='2-d hydrodynamic'):
+        pointData = gpd.read_file(probe_path_in)
+        
+        Flow_new = []
+        cHSI_new = []
+        # Loop through depth rasters to determine the depth at the RCT probe for each streamflow value
+        for raster in rasters:
+            flow_val = float(os.path.splitext(os.path.basename(raster))[0].split('h')[1].replace('_', '.'))
+            Flow_new.append(flow_val)
+            csiRaster = rasterio.open(Path(r'C:/Users/MM/Documents/SEI/Water Rights/02_Data and Model/RiverArchitect-SEI-main/01_Conditions/sfe_316').joinpath(raster))
+            point = pointData['geometry'][0]
+            point_val = csiRaster.read(1)[csiRaster.index(point.xy[0][0],point.xy[1][0])]
+            cHSI_new.append(point_val)
+        
+        Flow_new = np.append(Flow_new, [0])
+        cHSI_new = np.append(cHSI_new, [0])
+        
+        interpf = interp1d(Flow_new, cHSI_new, kind=interptype, fill_value="extrapolate")
+        
+        timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(scenario)+".csv"
+        
+        ind = 0
+        dfEcoseries = pd.DataFrame()
+        dfEcoseries_long = pd.DataFrame()
+        
+        for fname in self.life_stage_period:
+            for fstage in self.life_stage_period[fname]:
+                fish_period = (fname[0:2] + fstage[0:2]).lower()
+                
+                if verbose: print(fish_period)
+                
+                if ind == 0:
+                    # Read in flow timeseries and convert from reference streamflow site to topographic case site, and to m3/s
+                    dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, streamflow_normval=self.ref_area/self.case_area)
+                
+                # Determine depth of river at probe for each streamflow value in the time series using above-defined regression function for the topographic case site
+                dfEcoseries_temp = self.ecoTimeSeries(dfTimeSeries, interp_func=interpf, series_name=fname + ' - ' + fstage)
+                dfEcoseries = pd.concat([dfEcoseries, dfEcoseries_temp], axis=1)
+        
+                # Add in specific information for each loop
+                dfEcoseries_temp = dfEcoseries_temp.rename(columns={fname + ' - ' + fstage: 'Depth at RCT Probe Location'})
+                dfEcoseries_temp['Case'] = self.case
+                dfEcoseries_temp['Scenario'] = scenario
+                dfEcoseries_temp['Fish name'] = fname
+                dfEcoseries_temp['Life stage'] = fstage
+                dfEcoseries_temp['Fish name - Life stage']= fname + ' - ' + fstage
+                
+                dfEcoseries_long = pd.concat([dfEcoseries_long,dfEcoseries_temp])
+                ind += 1
+        
+        return dfTimeSeries, dfEcoseries, dfEcoseries_long
+    
+    def processData_rctdischarge(self, scenario, verbose=False):
+        timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(scenario)+".csv"
+                
+        dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, streamflow_normval=self.ref_area/self.case_area)
+        
+        # Create an Ecoseries dataframe using discharge data from reference site converted to case site (RCT Discharge LOI) for all entries
+        dfEcoseries = pd.DataFrame(index=dfTimeSeries.index)
+        
+        for fname in self.life_stage_period:
+            for fstage in self.life_stage_period[fname]:
+                dfEcoseries[fname + ' - ' + fstage] = dfTimeSeries.values.ravel()
+        
+        return dfTimeSeries, dfEcoseries
+    
+    def calculateSuccess(self, scenarios, verbose=False):
         '''
 
         Parameters
@@ -424,16 +491,10 @@ class model():
                 A variable that indicates if the T2 variable is used or not.
                 'True' - T1 and T2 are used.
                 'False' - Only T1 is used.
-                
-        eco_threshold : Float, optional
-            A number between 0 and 1 that indicates the threshold to which the ecoseries habitat area to bankfull area ratio should be compared. The default is 0.1.
             
         verbose : Boolean, optional
             Indicates if progress of the analysis should be printed in the dialog. The default is False.
             
-        analysis : String, optional
-            Indicates the type of analysis the user would like to complete. The default is '2-d hydrodynamic'
-
         Returns
         -------
         ecoseries_success : Pandas DataFrame
@@ -448,67 +509,36 @@ class model():
             
             if verbose: print(s)
             
-            if analysis == '2-d hydrodynamic':
-                dfSHArea, dfTimeSeries, self.streamflowUnits, dfEcoseries, dfEcoseries_long = self.processData(s)
-            
+            if self.modelType == '2-d hydrodynamic':
+                dfSHArea, dfTimeSeries, dfEcoseries, dfEcoseries_long = self.processData_2dh(s)
+            elif self.modelType == 'rct probe':
+                dfTimeSeries, dfEcoseries, dfEcoseries_long = self.processData_rctprobe(s)
             else:
+                dfTimeSeries, dfEcoseries = self.processData_rctdischarge(s)
                 
-                if (analysis == 'rct probe') or (analysis == 'rct discharge'):
-                        
-                    timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(s)+".csv"
-                    
-                    # Excel spreadsheet that contains data relating streamflow (column labeled 'Discharge') to habitat area (column labeled 'Calculated Area') for each fish name and life stage combination. This excel spreadsheet is created by the user and can be created using RiverArchitect for proper formatting. The path used for the RCT Table discharge needs is the first available, which is for 'chfr' 
-                    case_sharea_path = self.sha_path + self.case_name + "/" + self.case_name + "_sharea_chfr.xlsx"
-                    
-                    # Bankfull wetted area (BfQ_area) is unused, therefore fill with dummy of 1
-                    BfQ_area, dfSHArea_temp = self.ecoAreaDF(case_sharea_path=case_sharea_path, calc_BfQarea=False, BfQ_area=1)
-                        
-                    # Read in flow timeseries for reference site and convert to equivalent streamflow in case site
-                    dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, maxflow=dfSHArea_temp['Discharge'].values[0], streamflow_normval=self.ref_area/self.case_area)
-                    self.streamflowUnits = dfTimeSeries.columns[0]
-                    
-                    dfEcoseries = pd.DataFrame(index=dfTimeSeries.index)
-                    
-                    # Create an ecoseries dataframe using discharge data for all entries, this will be the Ecoseries DataFrame for the 'rct discharge option'
-                    for f in self.life_stage_period:
-                        
-                        for l in self.life_stage_period[f]:
-                            # Convert reference site thresholds to case site thresholds
-                            self.life_stage_period[f][l][2] = self.life_stage_period[f][l][2]/(self.ref_area/self.case_area)
-                            self.life_stage_period[f][l][3] = self.life_stage_period[f][l][3]/(self.ref_area/self.case_area)
-                  
-                            dfEcoseries[f + ' - ' + l] = dfTimeSeries.values.ravel()
-                        
-                    # if analysis == 'rct probe':
-                    #     return 'rct probe'
-                        
-                else:
-                    print('The variable analysis much be input as one of the following options: \'2-d hydrodynamic\', \'rct probe\', or \'rct discharge\'. Your data was not evaluated.')
-                    return
-            
             years = np.unique(dfTimeSeries.index.year.values)
             
-            for f in self.life_stage_period:
+            for fname in self.life_stage_period:
                 
-                if verbose: print(f)
+                if verbose: print(fname)
                 
-                for l in self.life_stage_period[f]:
+                for fstage in self.life_stage_period[fname]:
                     
-                    if verbose: print(l)
+                    if verbose: print(fstage)
                     
                     # Create list of dates to include for success ranking for each fish species and life stage combination
                     valid_dates = []
-                    dfEcorisk_temp = dfEcoseries[f + ' - ' + l].copy()
+                    dfEcorisk_temp = dfEcoseries[fname + ' - ' + fstage].copy()
                     
                     # Check to see if consecutive
-                    if self.life_stage_period[f][l][4]:
+                    if self.life_stage_period[fname][fstage][4]:
                         
                         # If consecutive, then determine if lower threshold is provided
-                        if self.life_stage_period[f][l][5]:
+                        if self.life_stage_period[fname][fstage][5]:
                             
                             # If two thresholds, find the last date that the flow is greater than the first threshold and the first date that the flow is less than or equal to the second threshold
-                            dfEcorisk_temp_gt1 = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
-                            dfEcorisk_temp_lt2 = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[f][l][3]]
+                            dfEcorisk_temp_gt1 = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[fname][fstage][2]]
+                            dfEcorisk_temp_lt2 = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[fname][fstage][3]]
                             
                             for y in years:
                                 # Create a subset for each model year
@@ -534,8 +564,8 @@ class model():
                                     
                         else:
                             # If only one threshold, find the first date that the data series is above the threshold and the first date it falls below the threshold
-                            dfEcorisk_temp_lt = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[f][l][2]]
-                            dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
+                            dfEcorisk_temp_lt = dfEcorisk_temp[dfEcorisk_temp <= self.life_stage_period[fname][fstage][2]]
+                            dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[fname][fstage][2]]
                             
                             for y in years:
                                 # Create a subset for each model year
@@ -567,54 +597,56 @@ class model():
                             endyear = y
                     
                             # If start or end month are before October, put start or end date in the following calendar year
-                            if self.life_stage_period[f][l][0][0] < 10:
+                            if self.life_stage_period[fname][fstage][0][0] < 10:
                                 startyear += 1
-                            if self.life_stage_period[f][l][1][0] < 10:
+                            if self.life_stage_period[fname][fstage][1][0] < 10:
                                 endyear += 1
                                 
                             # Determine if lower threshold is provided
-                            if self.life_stage_period[f][l][5]:
+                            if self.life_stage_period[fname][fstage][5]:
                                 # If two thresholds, count all days between start and end dates that are less than or equal to the first threshold and greater than the second threshold
-                                dfEcorisk_temp_btw = dfEcorisk_temp[(dfEcorisk_temp <= self.life_stage_period[f][l][2]) & (dfEcorisk_temp > self.life_stage_period[f][l][3])]
+                                dfEcorisk_temp_btw = dfEcorisk_temp[(dfEcorisk_temp <= self.life_stage_period[fname][fstage][2]) & (dfEcorisk_temp > self.life_stage_period[fname][fstage][3])]
                                 dfDates_temp = dfEcorisk_temp_btw.copy()
                                 
                             else:
                                 # If only one threshold, count all days between start and end dates that are above the threshold
-                                dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[f][l][2]]
+                                dfEcorisk_temp_gt = dfEcorisk_temp[dfEcorisk_temp > self.life_stage_period[fname][fstage][2]]
                                 dfDates_temp = dfEcorisk_temp_gt.copy()
                             
                             # Create dataframe with values meeting the threshold(s) between the dates indicated in the dictionary provided
-                            dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start=str(self.life_stage_period[f][l][0][0])+'/'+str(self.life_stage_period[f][l][0][1])+'/'+str(startyear), end=str(self.life_stage_period[f][l][1][0])+'/'+str(self.life_stage_period[f][l][1][1])+'/'+str(endyear))))]
+                            dfDates_temp = dfDates_temp[dfDates_temp.index.isin(list(pd.date_range(start='{:0.0f}'.format(self.life_stage_period[fname][fstage][0][0])+'/'+'{:0.0f}'.format(self.life_stage_period[fname][fstage][0][1])+'/'+str(startyear), end='{:0.0f}'.format(self.life_stage_period[fname][fstage][1][0])+'/'+'{:0.0f}'.format(self.life_stage_period[fname][fstage][1][1])+'/'+str(endyear))))]
                                 
                             valid_dates.extend(list(dfDates_temp.index))
                     
                     dfEcorisk_temp = dfEcorisk_temp[dfEcorisk_temp.index.isin(valid_dates)]
                     
                     # Count all entries above the threshold in each year
-                    numSuccess = pd.DataFrame(dfEcorisk_temp.resample('A-OCT').count()).rename(columns={f + ' - ' + l: "Successes"})
+                    numSuccess = pd.DataFrame(dfEcorisk_temp.resample('A-OCT').count()).rename(columns={fname + ' - ' + fstage: "Successes"})
                     numSuccess['Case'] = self.case
                     numSuccess['Scenario'] = str(s)
-                    numSuccess['Fish name'] = f
-                    numSuccess['Life stage'] = l
-                    numSuccess['Fish name - Life stage'] = f + ' - ' + l
+                    numSuccess['Fish name'] = fname
+                    numSuccess['Life stage'] = fstage
+                    numSuccess['Fish name - Life stage'] = fname + ' - ' + fstage
                     
                     ecoseries_success = pd.concat([ecoseries_success, numSuccess])
         
-        return ecoseries_success, dfEcoseries
+        return ecoseries_success
             
     
     def caseBankfullQtoALinePlot(self, dfSHArea):
         # Line plot of normalized habitat area over bankfull area versus normalized discharge to bankfull discharge
         g = sns.relplot(data=dfSHArea, x="Ratio of discharge to bankfull discharge", y="Ratio of habitat area to bankfull area", hue="Fish name", style="Fish name", markers=True, col='Life stage', kind='line')
-        g.savefig(self.fig_path + self.case_name + '_SHArea_Q-obj.svg')
-        g.savefig(self.fig_path + self.case_name + '_SHArea_Q-obj.pdf')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.svg')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.png')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.pdf')
         plt.close()
         
     def streamflowScatterPlot(self, dfTimeSeries):
         # Scatterplot of streamflow timeseries
         g = sns.scatterplot(data=dfTimeSeries, x=dfTimeSeries.index, y=self.streamflowUnits, linewidth=0, s=10, color='k')
-        g.figure.savefig(self.fig_path + self.case_name + '_Q_time-obj.svg')
-        g.figure.savefig(self.fig_path + self.case_name + '_Q_time-obj.pdf')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.svg')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.png')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.pdf')
         plt.close()
     
     def scenarioHabitatSeriesLinePlot(self, dfEcoseries):
@@ -622,8 +654,9 @@ class model():
         g = sns.relplot(data=dfEcoseries, x=dfEcoseries.index, y='Habitat area / Bankfull area', hue='Fish name', row='Life stage', kind="line", legend=False, aspect=2)
         g.axes[0][0].legend(self.f_name)
         plt.tight_layout()
-        g.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.svg')
-        g.savefig(self.fig_path + self.case_name + '_SHArea_time-obj.pdf')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.svg')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.png')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.pdf')
         plt.close()
 
     def plot_seqAvg(self, df, label, ax, CI=0.8, window=365):
@@ -659,7 +692,7 @@ class model():
         ax.plot(np.arange(1,years), seqAvgCI[:,1], list(ax.get_lines())[-1].get_color())
         ax.fill_between(x=np.arange(1,years), y1=seqAvgCI[:,0], y2=seqAvgCI[:,1], alpha=0.4, label=label)
     
-    def plot_multiSeqAvg(self, dfEcoseries):
+    def plot_multiSeqAvg_2dh(self, dfEcoseries):
         '''
         This function carries out the Sequence Average plot for all fish name and life stage combinations in the dfEcoseries DataFrame.
 
@@ -691,7 +724,7 @@ class model():
         g.savefig(self.fig_path + self.case_name + '_SHArea_seq_avg-obj.pdf')
         plt.close()
 
-    def plot_ecorisk(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True, ):
+    def plot_ecorisk_2dh(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True, ):
         '''
         Parameters
         ----------
