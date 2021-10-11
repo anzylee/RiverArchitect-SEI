@@ -330,13 +330,13 @@ def figureOptions(fig_Path, fig_name):
         fig_name = root.nameEntry.get()
         
     root = tk.Tk()
-    root.geometry("300x200")
+    root.geometry("500x200")
 
     tk.Label(root,text="Figure Path").grid(row=1,column=0,padx=5)
     tk.Label(root,text="Figure Name").grid(row=2,column=0,padx=5)
     
-    root.pathEntry = tk.Entry(root)
-    root.nameEntry = tk.Entry(root)
+    root.pathEntry = tk.Entry(root, width=40)
+    root.nameEntry = tk.Entry(root, width=40)
     
     root.pathEntry.grid(row=1,column=1)
     root.nameEntry.grid(row=2,column=1)
