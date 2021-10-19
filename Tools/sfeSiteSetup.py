@@ -406,7 +406,7 @@ class model():
         for raster in rasters:
             flow_val = float(os.path.splitext(os.path.basename(raster))[0].split('h')[1].replace('_', '.'))
             Flow_new.append(flow_val)
-            csiRaster = rasterio.open(Path(r'C:/Users/MM/Documents/SEI/Water Rights/02_Data and Model/RiverArchitect-SEI-main/01_Conditions/sfe_316').joinpath(raster))
+            csiRaster = rasterio.open(Path(r'../01_Conditions/'+self.case_name).joinpath(raster))
             point = pointData['geometry'][0]
             point_val = csiRaster.read(1)[csiRaster.index(point.xy[0][0],point.xy[1][0])]
             cHSI_new.append(point_val)
