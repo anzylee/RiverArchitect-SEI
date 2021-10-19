@@ -24,19 +24,12 @@ import sfeGUI
 
 '''
 FYI:
-Only two of the reference sites have streamflow from WEAP
-
-For the discharge option, I am normalizing by the ratio of reference site to case site. DISCHARGE OPTION DOES NOT REQUIRE ANY CONVERSIONS (EXCEPT MAYBE FOR VISUALIZATION). PROBE REQUIRES CONVERSION OF STREAMFLOW FOR CALCULATING PROBE DEPTH, BUT DOES NOT REQUIRE CONVERSION OF THE RCT DEPTH THRESHOLD.
+Only two of the RCT sites have streamflow from WEAP
 
 Current naming convention is:
     2-D Hydrodynamic = "2d-hydro_site-caseID_ref-LOI.png"
     RCT Probe = "rct-probe_site-caseID_rct-LOI_ref-LOI.png"
     RCT Discharge = "rct-discharge_rct-LOI_ref-LOI.png"
-    
-Questions:
-
-Would you like a schematic for the threshold algorithm?
-
 '''
 
 class model():
@@ -396,6 +389,10 @@ class model():
         return dfSHArea, dfTimeSeries, dfEcoseries, dfEcoseries_long
     
     def processData_rctprobe(self, scenario, verbose=False):
+        # Read in flow timeseries and convert from reference streamflow site to topographic case site, and to m3/s
+        timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(scenario)+".csv"
+        dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, streamflow_normval=self.ref_area/self.case_area)
+        
         # Create regression equation that relates streamflow to depth at RCT probe (should this be a separate function?)
         interptype = 'linear'
         probe_path_in = os.path.abspath(self.sha_path + self.case_name + "/probe.shp")
@@ -417,11 +414,12 @@ class model():
         Flow_new = np.append(Flow_new, [0])
         cHSI_new = np.append(cHSI_new, [0])
         
+        dfHSI = pd.DataFrame()
+        dfHSI[self.streamflowUnits] = Flow_new
+        dfHSI['Depth at RCT Probe Location (m)'] = cHSI_new
+        
         interpf = interp1d(Flow_new, cHSI_new, kind=interptype, fill_value="extrapolate")
         
-        timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(scenario)+".csv"
-        
-        ind = 0
         dfEcoseries = pd.DataFrame()
         dfEcoseries_long = pd.DataFrame()
         
@@ -430,10 +428,6 @@ class model():
                 fish_period = (fname[0:2] + fstage[0:2]).lower()
                 
                 if verbose: print(fish_period)
-                
-                if ind == 0:
-                    # Read in flow timeseries and convert from reference streamflow site to topographic case site, and to m3/s
-                    dfTimeSeries = self.loadTimeSeries(timeseries_path=timeseries_path, headers=self.t_headers, siteid=self.ref_site, streamflow_normval=self.ref_area/self.case_area)
                 
                 # Determine depth of river at probe for each streamflow value in the time series using above-defined regression function for the topographic case site
                 dfEcoseries_temp = self.ecoTimeSeries(dfTimeSeries, interp_func=interpf, series_name=fname + ' - ' + fstage)
@@ -448,9 +442,8 @@ class model():
                 dfEcoseries_temp['Fish name - Life stage']= fname + ' - ' + fstage
                 
                 dfEcoseries_long = pd.concat([dfEcoseries_long,dfEcoseries_temp])
-                ind += 1
         
-        return dfTimeSeries, dfEcoseries, dfEcoseries_long
+        return dfHSI, dfTimeSeries, dfEcoseries, dfEcoseries_long
     
     def processData_rctdischarge(self, scenario, verbose=False):
         timeseries_path = self.s_path + "Scenario"+'{0:03d}'.format(scenario)+".csv"
@@ -509,8 +502,8 @@ class model():
             if self.modelType == '2-d hydrodynamic':
                 dfSHArea, dfTimeSeries, dfEcoseries, dfEcoseries_long = self.processData_2dh(s)
             elif self.modelType == 'rct probe':
-                dfTimeSeries, dfEcoseries, dfEcoseries_long = self.processData_rctprobe(s)
-            else:
+                dfHSI, dfTimeSeries, dfEcoseries, dfEcoseries_long = self.processData_rctprobe(s)
+            elif self.modelType == 'rct discharge':
                 dfTimeSeries, dfEcoseries = self.processData_rctdischarge(s)
                 
             years = np.unique(dfTimeSeries.index.year.values)
@@ -633,27 +626,45 @@ class model():
     def caseBankfullQtoALinePlot(self, dfSHArea):
         # Line plot of normalized habitat area over bankfull area versus normalized discharge to bankfull discharge
         g = sns.relplot(data=dfSHArea, x="Ratio of discharge to bankfull discharge", y="Ratio of habitat area to bankfull area", hue="Fish name", style="Fish name", markers=True, col='Life stage', kind='line')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.svg')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.png')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_Q-obj.pdf')
+        g.savefig(self.fig_path + self.fig_name + '_SHAre-vs-Q.svg')
+        g.savefig(self.fig_path + self.fig_name + '_SHAre-vs-Q.png')
+        g.savefig(self.fig_path + self.fig_name + '_SHAre-vs-Q.pdf')
+        plt.close()
+    
+    def QtoProbeDepthLinePlot(self, dfHSI):
+        # Line plot of normalized habitat area over bankfull area versus normalized discharge to bankfull discharge
+        g = sns.relplot(data=dfHSI, x=self.streamflowUnits, y='Depth at RCT Probe Location (m)', kind='line')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-Q.svg')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-Q.png')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-Q.pdf')
         plt.close()
         
     def streamflowScatterPlot(self, dfTimeSeries):
         # Scatterplot of streamflow timeseries
         g = sns.scatterplot(data=dfTimeSeries, x=dfTimeSeries.index, y=self.streamflowUnits, linewidth=0, s=10, color='k')
-        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.svg')
-        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.png')
-        g.figure.savefig(self.fig_path + self.fig_name + '_Q_time-obj.pdf')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q-vs-time.svg')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q-vs-time.png')
+        g.figure.savefig(self.fig_path + self.fig_name + '_Q-vs-time.pdf')
         plt.close()
     
-    def scenarioHabitatSeriesLinePlot(self, dfEcoseries):
+    def habitatSeriesLinePlot(self, dfEcoseries):
         # Line plot of normalized habitat area calculated based on discharge regression output over time
         g = sns.relplot(data=dfEcoseries, x=dfEcoseries.index, y='Habitat area / Bankfull area', hue='Fish name', row='Life stage', kind="line", legend=False, aspect=2)
         g.axes[0][0].legend(self.f_name)
         plt.tight_layout()
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.svg')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.png')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_time-obj.pdf')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea-vs-time.svg')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea-vs-time.png')
+        g.savefig(self.fig_path + self.fig_name + '_SHArea-vs-time.pdf')
+        plt.close()
+        
+    def probeSeriesLinePlot(self, dfEcoseries):
+        # Line plot of normalized habitat area calculated based on discharge regression output over time
+        g = sns.relplot(data=dfEcoseries, x=dfEcoseries.index, y=list(self.life_stage_period.keys())[0] + ' - ' + list(self.life_stage_period[list(self.life_stage_period.keys())[0]].keys())[0], kind="line", legend=False, aspect=2)
+        plt.tight_layout()
+        plt.ylabel('Depth at RCT Probe Location (m)')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-time.svg')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-time.png')
+        g.savefig(self.fig_path + self.fig_name + '_ProbeDepth-vs-time.pdf')
         plt.close()
 
     def plot_seqAvg(self, df, label, ax, CI, window):
@@ -717,9 +728,9 @@ class model():
         plt.ylabel('Sequence-averaged habitat area / Bankfull area', labelpad=10)
         plt.xlabel('Sequence window size (years)')
         plt.grid(False)
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_seq_avg-obj.svg')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_seq_avg-obj.png')
-        g.savefig(self.fig_path + self.fig_name + '_SHArea_seq_avg-obj.pdf')
+        g.savefig(self.fig_path + self.fig_name + '_SeqAvg.svg')
+        g.savefig(self.fig_path + self.fig_name + '_SeqAvg.png')
+        g.savefig(self.fig_path + self.fig_name + '_SeqAvg.pdf')
         plt.close()
 
     def plot_multiSeqAvg_rct(self, dfEcoseries, window=365, CI=0.8):
@@ -763,9 +774,9 @@ class model():
         plt.ylabel('Sequence-averaged ' + fig_text, labelpad=10)
         plt.xlabel('Sequence window size (years)')
         plt.grid(False)
-        fig.savefig(self.fig_path + self.fig_name + '_seq_avg-obj.svg')
-        fig.savefig(self.fig_path + self.fig_name + '_seq_avg-obj.png')
-        fig.savefig(self.fig_path + self.fig_name + '_seq_avg-obj.pdf')
+        fig.savefig(self.fig_path + self.fig_name + '_SeqAvg.svg')
+        fig.savefig(self.fig_path + self.fig_name + '_SeqAvg.png')
+        fig.savefig(self.fig_path + self.fig_name + '_SeqAvg.pdf')
         plt.close()
 
     def plot_ecorisk_2dh(self, ecoseries_success=list(np.arange(5,156)), annual_d_threshold=40, plt_d_per_yr=True, plt_success_d=True, plt_success_yr=True):
