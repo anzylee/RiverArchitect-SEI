@@ -30,6 +30,8 @@ Current naming convention is:
     2-D Hydrodynamic = "2d-hydro_site-caseID_ref-LOI.png"
     RCT Probe = "rct-probe_site-caseID_rct-LOI_ref-LOI.png"
     RCT Discharge = "rct-discharge_rct-LOI_ref-LOI.png"
+    
+Must use seaborn version 0.11.1
 '''
 
 class model():
