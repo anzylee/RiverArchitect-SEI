@@ -8,7 +8,7 @@ import sfeSiteSetup as sfe
 
 # Initialization
 scenario = 5
-scenario_success = [5,6,7,8]
+scenario_success = [16,17,18,19,20,21,22,23,24,25]
 sfe_case = sfe.model()
 
 print(sfe_case.modelType)
