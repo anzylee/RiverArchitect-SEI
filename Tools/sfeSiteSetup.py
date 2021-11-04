@@ -158,7 +158,7 @@ class model():
             outRas = dtm_pre_arr > limit
         else:
             outRas = dtm_pre_arr < limit
-        shapes = list(rasterio.features.shapes(outRas.astype(int),mask=outRas,))
+        shapes = list(rasterio.features.shapes(outRas.astype(np.int32),mask=outRas,))
         
         # Create a MultiPolygon geometry with shapely.
         # shape() function is used to translate between GeoJSON and shapely geometry type
