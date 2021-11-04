@@ -8,6 +8,7 @@ import sfeSiteSetup as sfe
 
 # Initialization
 scenario = 5
+scenario_success = [5,6,7,8]
 sfe_case = sfe.model()
 
 print(sfe_case.modelType)
@@ -28,7 +29,7 @@ if sfe_case.modelType == '2-d hydrodynamic':
     sfe_case.plot_multiSeqAvg_2dh(dfEcoseries, window=365, CI=0.8)
     
     # Ecorisk analysis and plotting
-    ecoseries_success, cummulative_days, cummulative_years = sfe_case.plot_ecorisk_2dh(ecoseries_success=[5,6,7,8])
+    ecoseries_success, cummulative_days, cummulative_years = sfe_case.plot_ecorisk_2dh(ecoseries_success=scenario_success)
     
 elif sfe_case.modelType == 'rct probe':
     # Example scenario
@@ -41,7 +42,7 @@ elif sfe_case.modelType == 'rct probe':
     sfe_case.plot_multiSeqAvg_rct(dfEcoseries, window=365, CI=0.8)
     
     # Ecorisk analysis and plotting
-    ecoseries_success, cumulative_days, cumulative_years = sfe_case.plot_ecorisk_rct(ecoseries_success=[5,6,7,8])
+    ecoseries_success, cumulative_days, cumulative_years = sfe_case.plot_ecorisk_rct(ecoseries_success=scenario_success)
     
 elif sfe_case.modelType == 'rct discharge':
     # Example scenario
@@ -52,5 +53,5 @@ elif sfe_case.modelType == 'rct discharge':
     sfe_case.plot_multiSeqAvg_rct(dfEcoseries, window=365, CI=0.8)
     
     # Ecorisk analysis and plotting
-    ecoseries_success, cumulative_days, cumulative_years = sfe_case.plot_ecorisk_rct(ecoseries_success=[5,6,7,8])
+    ecoseries_success, cumulative_days, cumulative_years = sfe_case.plot_ecorisk_rct(ecoseries_success=scenario_success)
     
