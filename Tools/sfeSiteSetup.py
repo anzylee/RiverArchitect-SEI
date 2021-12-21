@@ -32,6 +32,10 @@ Current naming convention is:
     RCT Discharge = "rct-discharge_rct-LOI_ref-LOI.png"
     
 Must use seaborn version 0.11.1
+
+Save data as file in figures folder
+
+Create executable file with script
 '''
 
 class model():
@@ -69,7 +73,7 @@ class model():
         
         # Set the hydrodynamic case site watershed
         if (self.modelType == 'rct probe') or (self.modelType == '2-d hydrodynamic'):
-            self.case, self.case_site = sfeGUI.chooseCaseSite()
+            self.case, self.case_site = sfeGUI.chooseCaseSite(self)
             self.case_name = "sfe_" + '{0:d}'.format(self.case)
             
             if (self.modelType == 'rct probe'):

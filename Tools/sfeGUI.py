@@ -73,7 +73,11 @@ def chooseCaseSite():
     tk.Label(root,text="Topographic Case Site").grid(row=0,column=0,sticky="E")
     
     # Import case site database containing the corresponding LOI for each case site with available data
-    dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0)
+    if model.modelType == 'rct probe':
+        dfCase = pd.read_excel('input/case_site_database_probe.xlsx', index_col=0, header=0)
+    else:
+        dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0)
+        
     caseSiteOptions = {}
     for i, r in dfCase.iterrows():
         caseSiteOptions['Site ID: '+str(i)+', Watershed: '+str(r['LOI'])+', Geomorphic Class: '+r['Geomorphic Class']+', Geologic Setting: '+r['Geologic Setting']+', Mean Annual Flow (cfs): '+'{:0.1f}'.format(r['Mean Annual Flow (cfs)'])] = i
