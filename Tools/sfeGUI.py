@@ -17,6 +17,124 @@ def nextButton(parent, options, selection, text, textRow):
     else:
         tk.Label(parent,text=text).grid(row=textRow,column=0)
 
+def chooseAnalysisType():
+    root = tk.Tk()
+    root.geometry("400x200")
+
+    tk.Label(root,text="What would you like to analyze?").grid(row=0,column=0,sticky="NSEW")
+    
+    comparescenario = tk.BooleanVar()
+    tk.Radiobutton(root, text="Single scenario", variable=comparescenario, value=False).grid(sticky="NSEW", row=1, column=0, padx=5)
+    tk.Radiobutton(root, text="Compare scenarios", variable=comparescenario, value=True).grid(sticky="NSEW", row=2, column=0, padx=5)
+    
+    tk.Button(root, text="Next", command=lambda:nextButton(root, [True,False], comparescenario.get(), 'Choose an option', 4)).grid(row=3,column=0)
+    
+    for r in np.arange(5):
+        root.grid_rowconfigure(r, weight=1)
+        
+    root.grid_columnconfigure(0, weight=1)
+    
+    root.mainloop()
+    
+    return comparescenario.get()
+
+def chooseScenarios():
+    def isChecked():
+        if isRange.get():
+            root.list.config(state='disabled')
+            root.start.config(state='normal')
+            root.stop.config(state='normal')
+        else:
+            root.list.config(state='normal')
+            root.start.config(state='disabled')
+            root.stop.config(state='disabled')
+
+    def checkScenario(parent):
+        global scenarioList
+        
+        try:
+            if isRange.get():
+                scenarioList = list(range(int(root.start.get()),int(root.stop.get())+1))
+            else:
+                scenarioList = [int(i) for i in root.list.get().split(',')]
+            
+            if all(x <= 155 for x in scenarioList) and all(x >= 5 for x in scenarioList):
+                parent.destroy()
+            else:
+                tk.Label(root,text='Must enter integers from 5-155').grid(row=5,column=0,columnspan=2)
+        except:
+            tk.Label(root,text='Must enter integers from 5-155').grid(row=5,column=0,columnspan=2)
+
+    root = tk.Tk()
+    root.geometry("300x200")
+
+    tk.Label(root,text="Choose scenarios to compare\n(values from 5-155)").grid(row=0, column=0, columnspan=2, sticky="NSEW")
+    
+    tk.Label(root,text="Enter as range").grid(row=1,column=0,sticky="NSEW")
+    isRange = tk.BooleanVar()
+    tk.Checkbutton(root, variable=isRange, onvalue=True, offvalue=False, command=isChecked).grid(sticky="NSEW", row=1, column=1, padx=5)
+    
+    root.start = tk.Entry(root, width=10)
+    root.stop = tk.Entry(root, width=10)
+    root.list = tk.Entry(root, width=30)
+    
+    root.start.grid(row=2,column=0)
+    root.stop.grid(row=2,column=1)
+    root.list.grid(row=3,column=0,columnspan=2)
+    
+    root.start.insert(0, 'start')
+    root.stop.insert(0, 'stop')
+    root.list.insert(0, 'comma separated list')
+    
+    root.start.config(state='disabled')
+    root.stop.config(state='disabled')
+    
+    nextButton = tk.Button(root, text="Next", command=lambda:checkScenario(root))
+    nextButton.grid(row=4,column=1)
+    
+    for r in np.arange(6):
+        root.grid_rowconfigure(r, weight=1)
+    
+    for c in np.arange(2):
+        root.grid_columnconfigure(c, weight=1)
+        
+    root.mainloop()
+    
+    return scenarioList
+
+def setScenario():
+    def checkScenario(parent, scenario):
+        global scenarioVal
+        try:
+            scenarioVal = int(scenario.get())
+            
+            if scenarioVal >=5 and scenarioVal <=155:
+                parent.destroy()
+        except:
+            tk.Label(root,text='Must enter an integer from 5-155').grid(row=3,column=0)
+            
+    root = tk.Tk()
+    root.geometry("300x200")
+
+    tk.Label(root,text="Set scenario to be analyzed\n(value from 5-155)").grid(row=0, column=0, sticky="NSEW")
+    
+    scenario = tk.Entry(root, width=30)
+    scenario.grid(row=1, column=0)
+    scenario.insert(0, 'enter an integer from 5 to 155')
+
+    nextButton = tk.Button(root, text="Next", command=lambda:checkScenario(root, scenario))
+    nextButton.grid(row=2,column=0)
+    
+    for r in np.arange(4):
+        root.grid_rowconfigure(r, weight=1)
+        
+    for c in np.arange(2):
+        root.grid_columnconfigure(c, weight=1)
+        
+    root.mainloop()
+    
+    return scenarioVal
+
 def chooseModel():
     root = tk.Tk()
     root.geometry("300x200")
@@ -66,7 +184,7 @@ def chooseRefSite():
     
     return refSiteOptions[refSite.get()]
 
-def chooseCaseSite():
+def chooseCaseSite(model):
     root = tk.Tk()
     root.geometry("300x200")
 
@@ -77,7 +195,6 @@ def chooseCaseSite():
         dfCase = pd.read_excel('input/case_site_database_probe.xlsx', index_col=0, header=0)
     else:
         dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0)
-        
     caseSiteOptions = {}
     for i, r in dfCase.iterrows():
         caseSiteOptions['Site ID: '+str(i)+', Watershed: '+str(r['LOI'])+', Geomorphic Class: '+r['Geomorphic Class']+', Geologic Setting: '+r['Geologic Setting']+', Mean Annual Flow (cfs): '+'{:0.1f}'.format(r['Mean Annual Flow (cfs)'])] = i

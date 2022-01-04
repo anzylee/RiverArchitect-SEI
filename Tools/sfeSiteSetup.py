@@ -30,12 +30,6 @@ Current naming convention is:
     2-D Hydrodynamic = "2d-hydro_site-caseID_ref-LOI.png"
     RCT Probe = "rct-probe_site-caseID_rct-LOI_ref-LOI.png"
     RCT Discharge = "rct-discharge_rct-LOI_ref-LOI.png"
-    
-Must use seaborn version 0.11.1
-
-Save data as file in figures folder
-
-Create executable file with script
 '''
 
 class model():
@@ -65,7 +59,16 @@ class model():
         -------
         Model object.
         '''
-        # Set the analysis type
+        # Set the model type
+        self.compare_scenario = sfeGUI.chooseAnalysisType()
+        
+        # Set the scenario list
+        if self.compare_scenario:
+            self.scenarios = sfeGUI.chooseScenarios()
+        else:
+            self.scenarios = sfeGUI.setScenario()
+        
+        # Set the model type
         self.modelType = sfeGUI.chooseModel()
         
         # Set the streamflow reference watershed
@@ -162,7 +165,7 @@ class model():
             outRas = dtm_pre_arr > limit
         else:
             outRas = dtm_pre_arr < limit
-        shapes = list(rasterio.features.shapes(outRas.astype(np.int32),mask=outRas,))
+        shapes = list(rasterio.features.shapes(outRas.astype(int),mask=outRas,))
         
         # Create a MultiPolygon geometry with shapely.
         # shape() function is used to translate between GeoJSON and shapely geometry type
@@ -619,7 +622,7 @@ class model():
                     # Count all entries above the threshold in each year
                     numSuccess = pd.DataFrame(dfEcorisk_temp.resample('AS-OCT', closed='left').count()).rename(columns={fname + ' - ' + fstage: "Successes"})
                     numSuccess['Case'] = self.case
-                    numSuccess['Scenario'] = str(s)
+                    numSuccess['Scenario'] = '{0:03d}'.format(s)
                     numSuccess['Fish name'] = fname
                     numSuccess['Life stage'] = fstage
                     numSuccess['Fish name - Life stage'] = fname + ' - ' + fstage
@@ -919,7 +922,7 @@ class model():
             for s in scenarios:
                 ecoseries_success_temp = pd.DataFrame(index=index, columns=ecoseries_success.columns)
                 ecoseries_success_temp['Case'] = ecoseries_success.iloc[0]['Case']
-                ecoseries_success_temp['Scenario'] = str(s)
+                ecoseries_success_temp['Scenario'] = '{0:03d}'.format(s)
                 ecoseries_success_temp['Fish name'] = f[:f.find('-')-1]
                 ecoseries_success_temp['Life stage'] = f[f.find('-')+2:]
                 ecoseries_success_temp['Fish name - Life stage'] = f
