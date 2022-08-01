@@ -103,7 +103,7 @@ class model():
         self.life_stage_period = sfeGUI.setThresholds(self)
         
         # Initialize case and reference areas
-        dfLOI = pd.read_excel(site_area_database, index_col=0, header=0)
+        dfLOI = pd.read_excel(site_area_database, index_col=0, header=0, engine='openpyxl')
         self.case_area = dfLOI.loc[self.case_site]['Contributing Area']
         self.ref_area = dfLOI.loc[self.ref_site]['Contributing Area']
         self.cfs = True
@@ -221,7 +221,7 @@ class model():
     
         '''
         # Read in SHARrC data
-        dfSHArea_temp = pd.read_excel(case_sharea_path, index_col=None, header=0, skiprows=[0,2], usecols=[1,2,3,4,5])
+        dfSHArea_temp = pd.read_excel(case_sharea_path, index_col=None, header=0, skiprows=[0,2], usecols=[1,2,3,4,5], engine='openpyxl')
         # Add an entry for no flow
         dfSHArea_temp = dfSHArea_temp.append(pd.DataFrame(data=[[0,'','',100,0]], index=[dfSHArea_temp.shape[0]], columns=list(dfSHArea_temp.columns)))
         dfSHArea_temp = dfSHArea_temp.rename(columns={'Calculated Area': 'Habitat area'})

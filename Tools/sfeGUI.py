@@ -164,7 +164,7 @@ def chooseRefSite():
     tk.Label(root,text="Streamflow Reference Site").grid(row=0,column=0,sticky="E")
     
     # Import reference site IDs
-    dfRef = pd.read_excel('input/All SFE LOI Characteristics with MAF.xlsx', index_col=0, header=0)
+    dfRef = pd.read_excel('input/All SFE LOI Characteristics with MAF.xlsx', index_col=0, header=0,  engine='openpyxl')
     modeledRefs = dfRef[dfRef['Modeled']=='Y']
     refSiteOptions = {}
     for i, r in modeledRefs.iterrows():
@@ -192,9 +192,9 @@ def chooseCaseSite(model):
     
     # Import case site database containing the corresponding LOI for each case site with available data
     if model.modelType == 'rct probe':
-        dfCase = pd.read_excel('input/case_site_database_probe.xlsx', index_col=0, header=0)
+        dfCase = pd.read_excel('input/case_site_database_probe.xlsx', index_col=0, header=0, engine='openpyxl')
     else:
-        dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0)
+        dfCase = pd.read_excel('input/case_site_database.xlsx', index_col=0, header=0, engine='openpyxl')
     caseSiteOptions = {}
     for i, r in dfCase.iterrows():
         caseSiteOptions['Site ID: '+str(i)+', Watershed: '+str(r['LOI'])+', Geomorphic Class: '+r['Geomorphic Class']+', Geologic Setting: '+r['Geologic Setting']+', Mean Annual Flow (cfs): '+'{:0.1f}'.format(r['Mean Annual Flow (cfs)'])] = i
@@ -220,7 +220,7 @@ def chooseRCTParadigm():
     tk.Label(root,text="RCT Paradigm Model Watershed Site").grid(row=0,column=0,sticky="E")
     
     # Import reference site IDs
-    dfRef = pd.read_excel('input/All SFE LOI Characteristics with MAF.xlsx', index_col=0, header=0)
+    dfRef = pd.read_excel('input/All SFE LOI Characteristics with MAF.xlsx', index_col=0, header=0, engine='openpyxl')
     modeledRefs = dfRef[dfRef['Paradigm']=='Y']
     paradigmOptions = {}
     for i, r in modeledRefs.iterrows():
@@ -282,7 +282,7 @@ def setThresholds(model):
         
     elif (model.modelType == 'rct probe') or (model.modelType == 'rct discharge'):
         
-        dfParadigm = pd.read_excel('../Tools/input/RCT_Paradigm_Selection.xlsx', index_col=None, header=0)
+        dfParadigm = pd.read_excel('../Tools/input/RCT_Paradigm_Selection.xlsx', index_col=None, header=0, engine='openpyxl')
         paradigm = dfParadigm[dfParadigm['LOI'] == model.rct_site]
         
         if model.modelType == 'rct discharge':

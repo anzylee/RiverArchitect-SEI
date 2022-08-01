@@ -1,0 +1,13 @@
+python 3.6.10
+tk 8.6.10
+fiona 1.8.4
+geopandas 0.6.1 
+matplotlib 3.2.1 
+numpy 1.18.5 
+pandas 1.1.5 
+rasterio 1.0.21 
+scipy 1.5.2 
+seaborn 0.11.1 
+shapely 1.6.4
+xlrd 2.0.1
+openpyxl 3.0.9
